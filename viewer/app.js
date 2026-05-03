@@ -1,12 +1,33 @@
-const DEFAULT_API_BASE = 'https://mail.berich.xyz';
-const DEFAULT_API_KEY = 'bcbdda72f675614a8e2b7d2f6747ee750d84519b67d0a9ba6be712364c8985be';
+import { createApiClient } from './api.js';
+import { DEFAULT_API_BASE, DEFAULT_API_KEY } from './config.js';
+import {
+  escapeAttribute,
+  escapeHtml,
+  formatAddressChips,
+  formatTime,
+  fullTime,
+  splitEmail
+} from './dom-utils.js';
+import {
+  extractStructuredItems,
+  fitIframeToContent,
+  messageBodyText,
+  renderableHtmlDocument
+} from './mail-content.js';
+
+const DEFAULT_BODY_MODE_KEY = 'automail.viewer.defaultBodyMode';
+
+function readDefaultBodyMode() {
+  const value = localStorage.getItem(DEFAULT_BODY_MODE_KEY);
+  return value === 'text' ? 'text' : 'html';
+}
 
 const state = {
   mailboxes: [],
   selectedMailbox: 'all',
   messages: [],
   selectedMessageId: '',
-  defaultBodyMode: localStorage.getItem('automail.defaultBodyMode') === 'html' ? 'html' : 'text',
+  defaultBodyMode: readDefaultBodyMode(),
   bodyModeByMessageId: new Map(),
   refreshTimer: null,
   isRefreshing: false,
@@ -41,6 +62,11 @@ const nodes = {
 
 nodes.apiBaseText.value = DEFAULT_API_BASE;
 
+const api = createApiClient({
+  apiBase: () => DEFAULT_API_BASE,
+  apiKey: () => DEFAULT_API_KEY
+});
+
 function setStatus(message, isError = false) {
   nodes.statusText.textContent = message;
   nodes.statusText.classList.toggle('error', isError);
@@ -57,7 +83,7 @@ function showToast(message) {
 
 function setDefaultBodyMode(value) {
   state.defaultBodyMode = value === 'html' ? 'html' : 'text';
-  localStorage.setItem('automail.defaultBodyMode', state.defaultBodyMode);
+  localStorage.setItem(DEFAULT_BODY_MODE_KEY, state.defaultBodyMode);
   nodes.defaultBodyModeInputs.forEach((input) => {
     input.checked = input.value === state.defaultBodyMode;
   });
@@ -85,213 +111,6 @@ async function copyText(value) {
   await navigator.clipboard.writeText(text);
   setStatus(`Copied ${text}`);
   showToast(`Copied ${text}`);
-}
-
-function apiBase() {
-  return DEFAULT_API_BASE.replace(/\/+$/, '');
-}
-
-function apiKey() {
-  return DEFAULT_API_KEY;
-}
-
-async function request(path) {
-  const response = await fetch(`${apiBase()}${path}`, {
-    headers: {
-      'x-api-key': apiKey()
-    }
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`${response.status} ${text}`);
-  }
-
-  return response.json();
-}
-
-function formatAddressList(value) {
-  if (!Array.isArray(value)) {
-    return '';
-  }
-
-  return value.map((item) => item.name ? `${item.name} <${item.address}>` : item.address).join(', ');
-}
-
-function formatAddressChips(value) {
-  if (!Array.isArray(value) || value.length === 0) {
-    return '';
-  }
-
-  return value.map((item) => {
-    const address = item.address || '';
-    const label = item.name ? `${item.name} <${address}>` : address;
-    return `<span class="copy-email" data-copy="${escapeHtml(address)}" title="Click to copy">${escapeHtml(label)}</span>`;
-  }).join(', ');
-}
-
-function formatTime(value) {
-  if (!value) {
-    return '-';
-  }
-
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  }).format(new Date(value));
-}
-
-function fullTime(value) {
-  if (!value) {
-    return '-';
-  }
-
-  return new Intl.DateTimeFormat('en', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  }).format(new Date(value));
-}
-
-function stripHtml(value) {
-  const template = document.createElement('template');
-  template.innerHTML = value || '';
-  return template.content.textContent || '';
-}
-
-function messageBodyText(message) {
-  const text = String(message.text || '').trim();
-
-  if (text) {
-    return text;
-  }
-
-  return stripHtml(message.html).trim();
-}
-
-function renderableHtmlDocument(value = '') {
-  const source = String(value || '');
-  const headContent = [
-    '<meta charset="utf-8">',
-    '<meta http-equiv="Content-Security-Policy" content="script-src \'none\'">',
-    '<base target="_blank">'
-  ].join('');
-
-  if (/<head\b[^>]*>/i.test(source)) {
-    return source.replace(/<head\b([^>]*)>/i, `<head$1>${headContent}`);
-  }
-
-  if (/<html\b[^>]*>/i.test(source)) {
-    return source.replace(/<html\b([^>]*)>/i, `<html$1><head>${headContent}</head>`);
-  }
-
-  return `<!doctype html><html><head>${headContent}</head><body>${source}</body></html>`;
-}
-
-function extractHtmlLinks(value) {
-  const template = document.createElement('template');
-  template.innerHTML = value || '';
-  return [...template.content.querySelectorAll('a[href^="http://"], a[href^="https://"]')]
-    .filter((anchor) => anchor.textContent.trim())
-    .map((anchor) => anchor.href);
-}
-
-function extractStructuredItems(message) {
-  if (message.structuredData?.items?.length) {
-    return message.structuredData.items
-      .filter((item) => item?.type !== 'link' || !isIgnoredResourceLink(item.value))
-      .map((item) => ({
-        label: item.label || (item.type === 'link' ? 'Link' : 'Verification code'),
-        value: item.value,
-        type: item.type || 'unknown'
-      }));
-  }
-
-  const source = [
-    message.subject,
-    message.text,
-    stripHtml(message.html),
-    ...extractHtmlLinks(message.html)
-  ].filter(Boolean).join('\n');
-  const codes = new Set();
-  const links = new Set();
-  const codePattern = /(?<!\d)\d{6}(?!\d)/g;
-  const linkPattern = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
-
-  for (const match of source.matchAll(codePattern)) {
-    codes.add(match[0]);
-  }
-
-  for (const match of source.matchAll(linkPattern)) {
-    const link = match[0].replace(/[.,;:!?]+$/, '');
-    if (!isIgnoredResourceLink(link)) {
-      links.add(link);
-    }
-  }
-
-  return [
-    ...[...codes].map((value) => ({
-      label: 'Verification code',
-      value,
-      type: 'verification_code'
-    })),
-    ...[...links].map((value) => ({
-      label: 'Link',
-      value,
-      type: 'link'
-    }))
-  ];
-}
-
-const ignoredResourceExtensionPattern = /\.(?:avif|bmp|gif|ico|jpe?g|png|svg|webp|woff2?|ttf|otf|eot|css|js|mjs|map|wasm|webmanifest|manifest)(?:$|[?#])/i;
-const ignoredResourceHosts = new Set([
-  'fonts.googleapis.com',
-  'fonts.gstatic.com',
-  'p.typekit.net',
-  'use.typekit.net'
-]);
-
-function isSendGridHost(hostname) {
-  return hostname === 'sendgrid.net' || hostname.endsWith('.sendgrid.net');
-}
-
-function isIgnoredResourceLink(value = '') {
-  try {
-    const url = new URL(value);
-    const hostname = url.hostname.toLowerCase();
-    const pathname = url.pathname.toLowerCase();
-    return (
-      ignoredResourceHosts.has(hostname) ||
-      ignoredResourceExtensionPattern.test(pathname) ||
-      (isSendGridHost(hostname) && /^\/wf\/open(?:$|[/?#])/.test(pathname))
-    );
-  } catch {
-    return ignoredResourceExtensionPattern.test(String(value));
-  }
-}
-
-function splitEmail(value) {
-  const text = String(value || '');
-  const atIndex = text.indexOf('@');
-
-  if (atIndex <= 0) {
-    return {
-      prefix: text,
-      domain: ''
-    };
-  }
-
-  return {
-    prefix: text.slice(0, atIndex),
-    domain: text.slice(atIndex)
-  };
 }
 
 function renderMailboxes() {
@@ -402,6 +221,7 @@ function renderMessageDetail(message) {
         sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-top-navigation-by-user-activation"
         referrerpolicy="no-referrer"
         csp="script-src 'none'"
+        scrolling="no"
         srcdoc="${escapeAttribute(renderableHtmlDocument(message.html))}"
       ></iframe>
     `
@@ -449,19 +269,11 @@ function renderMessageDetail(message) {
       renderMessageDetail(message);
     });
   });
-}
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function escapeAttribute(value) {
-  return escapeHtml(value);
+  const frame = nodes.messageDetail.querySelector('.html-frame');
+  if (frame) {
+    fitIframeToContent(frame);
+  }
 }
 
 function buildMessageQuery() {
@@ -482,7 +294,7 @@ function buildMessageQuery() {
 }
 
 async function loadMailboxes() {
-  const data = await request('/mailboxes');
+  const data = await api.request('/mailboxes');
   state.mailboxes = data.mailboxes || [];
   renderMailboxes();
 }
@@ -490,7 +302,7 @@ async function loadMailboxes() {
 async function loadMessages() {
   setStatus('Loading messages...');
   const previousSelectedId = state.selectedMessageId;
-  const data = await request(`/messages?${buildMessageQuery()}`);
+  const data = await api.request(`/messages?${buildMessageQuery()}`);
   state.messages = data.messages || [];
   renderMailboxes();
   renderMessages();
@@ -516,7 +328,7 @@ async function loadMessageDetail(summary) {
   const params = new URLSearchParams({
     mailbox: summary.mailbox
   });
-  const message = await request(`/messages/${summary.id}?${params.toString()}`);
+  const message = await api.request(`/messages/${summary.id}?${params.toString()}`);
   renderMessageDetail(message);
   nodes.messageDetail.dataset.messageId = summary.id;
   setStatus('Ready');

@@ -72,7 +72,7 @@ npm run backfill:structured -- --mailbox=jasper@mail.berich.xyz
 - Mailbox names, emails, verification codes, and structured links should be easy to copy.
 - Toasts should be visible in the top-right.
 - API base can be displayed read-only; API key should not be shown in the UI.
-- Show a text-only body by default. Optional HTML rendering must stay inside a sandboxed iframe without script execution.
+- Render HTML bodies by default in a sandboxed iframe without script execution; keep text mode available.
 - Put regular viewer preferences behind the top-right Settings entry, including the default text/html body rendering mode.
 
 ## Deployment Notes
@@ -86,6 +86,6 @@ npm run backfill:structured -- --mailbox=jasper@mail.berich.xyz
 ## Testing
 
 - Run `npm test` before committing backend or shared logic changes.
-- Run `node --check viewer/app.js` for viewer JavaScript changes.
+- Run `node --check viewer/*.js` for viewer JavaScript changes.
 - Current unit tests cover config, HTTP routing, storage, structured extraction, and backfill argument parsing.
 - Frontend viewer does not currently have browser-level tests; add Playwright or jsdom-based tests if viewer logic becomes more complex.

@@ -525,9 +525,11 @@ button:hover {
 
 .html-frame {
   width: 100%;
-  min-height: 480px;
+  display: block;
+  min-height: 240px;
   border: 1px solid var(--line);
   background: #fff;
+  overflow: hidden;
 }
 
 .error {

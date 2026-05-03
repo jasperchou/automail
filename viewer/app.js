@@ -221,6 +221,23 @@ function isIgnoredResourceLink(value = '') {
   }
 }
 
+function splitEmail(value) {
+  const text = String(value || '');
+  const atIndex = text.indexOf('@');
+
+  if (atIndex <= 0) {
+    return {
+      prefix: text,
+      domain: ''
+    };
+  }
+
+  return {
+    prefix: text.slice(0, atIndex),
+    domain: text.slice(atIndex)
+  };
+}
+
 function renderMailboxes() {
   const items = [
     { email: 'all', label: 'All', count: state.messages.length },
@@ -228,27 +245,36 @@ function renderMailboxes() {
   ];
 
   nodes.mailboxList.replaceChildren(...items.map((item) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `mailbox-item${state.selectedMailbox === item.email ? ' active' : ''}`;
-    button.innerHTML = `
-      <span class="${item.email === 'all' ? '' : 'copy-email'}" data-copy="${escapeHtml(item.email)}" title="Click to copy">${escapeHtml(item.label)}</span>
-      <span class="mailbox-count">${item.count}</span>
+    const row = document.createElement('div');
+    const emailParts = splitEmail(item.email);
+    row.className = `mailbox-item${state.selectedMailbox === item.email ? ' active' : ''}`;
+    row.innerHTML = `
+      <button class="mailbox-select" type="button">
+        <span class="mailbox-name">
+          ${item.email === 'all'
+            ? escapeHtml(item.label)
+            : `<span class="mailbox-prefix" data-copy="${escapeHtml(item.email)}" title="点击前缀复制完整邮箱">${escapeHtml(emailParts.prefix)}</span><span class="mailbox-domain">${escapeHtml(emailParts.domain)}</span>`
+          }
+        </span>
+        ${item.email === 'all' ? `<span class="mailbox-count">${item.count}</span>` : ''}
+      </button>
     `;
-    const copyTarget = button.querySelector('[data-copy]');
-    if (copyTarget && item.email !== 'all') {
-      copyTarget.addEventListener('click', (event) => {
+    const prefix = row.querySelector('.mailbox-prefix');
+    if (prefix) {
+      prefix.addEventListener('click', (event) => {
+        event.preventDefault();
         event.stopPropagation();
         copyText(item.email);
       });
     }
-    button.addEventListener('click', () => {
+    function selectMailbox() {
       state.selectedMailbox = item.email;
       state.selectedMessageId = '';
       renderMailboxes();
       loadMessages();
-    });
-    return button;
+    }
+    row.querySelector('.mailbox-select').addEventListener('click', selectMailbox);
+    return row;
   }));
 }
 

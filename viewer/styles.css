@@ -174,7 +174,7 @@ button:hover {
 
 .workspace {
   display: grid;
-  grid-template-columns: 230px minmax(310px, 430px) minmax(420px, 1fr);
+  grid-template-columns: minmax(320px, 400px) minmax(310px, 430px) minmax(420px, 1fr);
   min-height: 0;
   border: 1px solid var(--line);
   background: rgba(251, 250, 245, 0.82);
@@ -249,8 +249,7 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: 0;
   font-weight: 700;
 }
 
@@ -264,6 +263,55 @@ button:hover {
   color: var(--muted);
   font-size: 12px;
   font-weight: 600;
+}
+
+.mailbox-select {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  height: auto;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.mailbox-select:hover {
+  background: transparent;
+  color: inherit;
+}
+
+.mailbox-select:focus-visible {
+  outline: 3px solid rgba(25, 107, 95, 0.2);
+  outline-offset: -3px;
+}
+
+.mailbox-name {
+  min-width: 0;
+  line-height: 1.28;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mailbox-prefix {
+  cursor: copy;
+  text-decoration: underline;
+  text-decoration-color: rgba(25, 107, 95, 0.22);
+  text-underline-offset: 3px;
+}
+
+.mailbox-prefix:hover {
+  color: var(--accent-strong);
+  text-decoration-color: var(--accent-strong);
+}
+
+.mailbox-domain {
+  color: var(--muted);
 }
 
 .copy-email {

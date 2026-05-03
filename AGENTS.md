@@ -12,9 +12,11 @@
 
 - This is a minimal automail service for receiving arbitrary mailbox addresses and exposing simple pull APIs.
 - SMTP receives mail directly on port `25` on the server; do not route SMTP through Caddy.
+- SMTP must reject recipients outside the recipient allowlist at `RCPT TO` time.
+- Recipient allowlist entries can be full email addresses or domains; manage them through `/allowlist`.
 - HTTP API is served behind Caddy at `https://mail.berich.xyz`.
 - Caddy must require an API key to be present for mail API requests, and the backend must still validate the actual key.
-- CORS for the mail API should remain open enough for the local viewer: allow `GET`, `OPTIONS`, and `x-api-key`.
+- CORS for the mail API should remain open enough for the local viewer: allow `GET`, `POST`, `DELETE`, `OPTIONS`, and `x-api-key`.
 
 ## Storage And Containers
 

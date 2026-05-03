@@ -11,6 +11,7 @@ const storage = createStorage(config.databaseUrl);
 async function main() {
   await fs.mkdir(config.dataDir, { recursive: true });
   await storage.init();
+  await storage.seedRecipientAllowlist(config.allowedRecipients);
 
   const smtpServer = new SMTPServer({
     disabledCommands: ['AUTH'],
@@ -20,7 +21,17 @@ async function main() {
       if (!address.address) {
         return callback(new Error('Invalid recipient'));
       }
-      callback();
+
+      storage.isRecipientAllowed(address.address)
+        .then((allowed) => {
+          if (!allowed) {
+            const error = new Error('Recipient not allowed');
+            error.responseCode = 550;
+            return callback(error);
+          }
+          callback();
+        })
+        .catch(callback);
     },
     onData(stream, session, callback) {
       const chunks = [];

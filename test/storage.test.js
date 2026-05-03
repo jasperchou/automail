@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createStorage, pickText, serializeHeaders } from '../src/storage.js';
+import {
+  createStorage,
+  normalizeAllowlistEntry,
+  pickText,
+  recipientAllowlistKeys,
+  serializeHeaders
+} from '../src/storage.js';
 
 function createPoolMock() {
   const state = {
+    allowlist: new Map(),
     mailboxes: new Map(),
     messages: []
   };
@@ -42,6 +49,33 @@ function createPoolMock() {
         };
         state.messages.push(row);
         return { rows: [], rowCount: 1 };
+      }
+
+      if (text.includes('SELECT entry, created_at') && text.includes('FROM recipient_allowlist')) {
+        return {
+          rows: [...state.allowlist.values()].sort((a, b) => a.entry.localeCompare(b.entry)),
+          rowCount: state.allowlist.size
+        };
+      }
+
+      if (text.includes('INSERT INTO recipient_allowlist')) {
+        const row = state.allowlist.get(params[0]) || {
+          entry: params[0],
+          created_at: '2026-05-03T00:00:00.000Z'
+        };
+        state.allowlist.set(params[0], row);
+        return { rows: [row], rowCount: 1 };
+      }
+
+      if (text.includes('DELETE FROM recipient_allowlist')) {
+        const deleted = state.allowlist.delete(params[0]);
+        return { rows: [], rowCount: deleted ? 1 : 0 };
+      }
+
+      if (text.includes('FROM recipient_allowlist') && text.includes('entry = ANY')) {
+        const keys = params[0];
+        const exists = keys.some((key) => state.allowlist.has(key));
+        return { rows: exists ? [{ '?column?': 1 }] : [], rowCount: exists ? 1 : 0 };
       }
 
       if (text.includes('SELECT email') && text.includes('FROM mailboxes')) {
@@ -169,6 +203,33 @@ test('serializeHeaders stringifies circular values', () => {
   const result = serializeHeaders(headers);
 
   assert.equal(result['x-circular'], '[object Object]');
+});
+
+test('allowlist normalizers support full address and domain keys', () => {
+  assert.equal(normalizeAllowlistEntry(' @Berich.XYZ '), 'berich.xyz');
+  assert.deepEqual(recipientAllowlistKeys('Jasper@Mail.Berich.XYZ'), [
+    'jasper@mail.berich.xyz',
+    'mail.berich.xyz'
+  ]);
+  assert.deepEqual(recipientAllowlistKeys('invalid'), ['invalid']);
+});
+
+test('recipient allowlist supports seed, list, add, remove, and matching', async () => {
+  const pool = createPoolMock();
+  const storage = createStorage('postgres://example', { pool });
+  await storage.init();
+
+  await storage.seedRecipientAllowlist(['@berich.xyz', 'Jasper@Mail.Berich.XYZ']);
+
+  assert.deepEqual(
+    (await storage.listRecipientAllowlist()).map((item) => item.entry),
+    ['berich.xyz', 'jasper@mail.berich.xyz']
+  );
+  assert.equal(await storage.isRecipientAllowed('someone@berich.xyz'), true);
+  assert.equal(await storage.isRecipientAllowed('jasper@mail.berich.xyz'), true);
+  assert.equal(await storage.isRecipientAllowed('spameri@tiscali.it'), false);
+  assert.equal(await storage.removeRecipientAllowlistEntry('berich.xyz'), true);
+  assert.equal(await storage.isRecipientAllowed('someone@berich.xyz'), false);
 });
 
 test('storage stores, lists, and fetches messages in postgres', async () => {

@@ -48,6 +48,24 @@ export function pickText(parsed) {
   return '';
 }
 
+export function normalizeAllowlistEntry(value = '') {
+  return String(value).trim().toLowerCase().replace(/^@+/, '');
+}
+
+export function recipientAllowlistKeys(address = '') {
+  const normalizedAddress = normalizeAllowlistEntry(address);
+  const atIndex = normalizedAddress.lastIndexOf('@');
+
+  if (atIndex <= 0 || atIndex === normalizedAddress.length - 1) {
+    return [normalizedAddress].filter(Boolean);
+  }
+
+  return [
+    normalizedAddress,
+    normalizedAddress.slice(atIndex + 1)
+  ];
+}
+
 export function createStorage(databaseUrl, options = {}) {
   const pool = options.pool || new Pool({
     connectionString: databaseUrl
@@ -101,6 +119,13 @@ export function createStorage(databaseUrl, options = {}) {
     await query(`
       CREATE INDEX IF NOT EXISTS idx_messages_mail_from
       ON messages (mail_from)
+    `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS recipient_allowlist (
+        entry TEXT PRIMARY KEY,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
     `);
   }
 
@@ -198,6 +223,89 @@ export function createStorage(databaseUrl, options = {}) {
     );
 
     return result.rows.map((row) => row.email);
+  }
+
+  async function seedRecipientAllowlist(entries = []) {
+    for (const entry of entries) {
+      await addRecipientAllowlistEntry(entry);
+    }
+  }
+
+  async function listRecipientAllowlist() {
+    const result = await query(
+      `
+        SELECT entry, created_at
+        FROM recipient_allowlist
+        ORDER BY entry ASC
+      `
+    );
+
+    return result.rows.map((row) => ({
+      entry: row.entry,
+      createdAt: new Date(row.created_at).toISOString()
+    }));
+  }
+
+  async function addRecipientAllowlistEntry(entry) {
+    const normalizedEntry = normalizeAllowlistEntry(entry);
+
+    if (!normalizedEntry) {
+      return null;
+    }
+
+    const result = await query(
+      `
+        INSERT INTO recipient_allowlist (entry)
+        VALUES ($1)
+        ON CONFLICT (entry) DO UPDATE SET entry = EXCLUDED.entry
+        RETURNING entry, created_at
+      `,
+      [normalizedEntry]
+    );
+
+    const row = result.rows[0];
+    return {
+      entry: row.entry,
+      createdAt: new Date(row.created_at).toISOString()
+    };
+  }
+
+  async function removeRecipientAllowlistEntry(entry) {
+    const normalizedEntry = normalizeAllowlistEntry(entry);
+
+    if (!normalizedEntry) {
+      return false;
+    }
+
+    const result = await query(
+      `
+        DELETE FROM recipient_allowlist
+        WHERE entry = $1
+      `,
+      [normalizedEntry]
+    );
+
+    return result.rowCount > 0;
+  }
+
+  async function isRecipientAllowed(address) {
+    const keys = recipientAllowlistKeys(address);
+
+    if (keys.length === 0) {
+      return false;
+    }
+
+    const result = await query(
+      `
+        SELECT 1
+        FROM recipient_allowlist
+        WHERE entry = ANY($1::text[])
+        LIMIT 1
+      `,
+      [keys]
+    );
+
+    return result.rowCount > 0;
   }
 
   function normalizeListOptions(options = {}) {
@@ -419,6 +527,11 @@ export function createStorage(databaseUrl, options = {}) {
     init,
     storeMessage,
     listMailboxes,
+    seedRecipientAllowlist,
+    listRecipientAllowlist,
+    addRecipientAllowlistEntry,
+    removeRecipientAllowlistEntry,
+    isRecipientAllowed,
     listMessages,
     listAllMessages,
     getMessage,

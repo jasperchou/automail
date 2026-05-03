@@ -12,9 +12,11 @@
 
 - This is a minimal automail service for receiving arbitrary mailbox addresses and exposing simple pull APIs.
 - SMTP receives mail directly on port `25` on the server; do not route SMTP through Caddy.
+- SMTP must reject recipients outside the recipient allowlist at `RCPT TO` time.
+- Recipient allowlist entries can be full email addresses or domains; manage them through `/allowlist`.
 - HTTP API is served behind Caddy at `https://mail.berich.xyz`.
 - Caddy must require an API key to be present for mail API requests, and the backend must still validate the actual key.
-- CORS for the mail API should remain open enough for the local viewer: allow `GET`, `OPTIONS`, and `x-api-key`.
+- CORS for the mail API should remain open enough for the local viewer: allow `GET`, `POST`, `DELETE`, `OPTIONS`, and `x-api-key`.
 
 ## Storage And Containers
 
@@ -70,6 +72,8 @@ npm run backfill:structured -- --mailbox=jasper@mail.berich.xyz
 - Mailbox names, emails, verification codes, and structured links should be easy to copy.
 - Toasts should be visible in the top-right.
 - API base can be displayed read-only; API key should not be shown in the UI.
+- Render HTML bodies by default in a sandboxed iframe without script execution; keep text mode available.
+- Put regular viewer preferences behind the top-right Settings entry, including the default text/html body rendering mode.
 
 ## Deployment Notes
 
@@ -82,6 +86,6 @@ npm run backfill:structured -- --mailbox=jasper@mail.berich.xyz
 ## Testing
 
 - Run `npm test` before committing backend or shared logic changes.
-- Run `node --check viewer/app.js` for viewer JavaScript changes.
+- Run `node --check viewer/*.js` for viewer JavaScript changes.
 - Current unit tests cover config, HTTP routing, storage, structured extraction, and backfill argument parsing.
 - Frontend viewer does not currently have browser-level tests; add Playwright or jsdom-based tests if viewer logic becomes more complex.

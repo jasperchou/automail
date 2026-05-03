@@ -2,7 +2,8 @@
 
 一个最小可用的邮件接收服务：
 
-- 收到投递到任意邮箱地址的邮件时，自动创建该邮箱并存储邮件
+- 收到投递到白名单邮箱或域名下的邮件时，自动创建该邮箱并存储邮件
+- SMTP 只接收白名单邮箱或域名下的收件人，避免被外部扫描器滥用
 - 提供简单 HTTP 接口，按邮箱拉取邮件列表和邮件详情
 - 先用本地端口跑通，后续你把域名 `MX` 指到这台机器即可
 
@@ -10,8 +11,10 @@
 
 - SMTP 收信
 - 自动创建邮箱
-- 文件落盘存储
+- 收件白名单
+- Postgres 存储
 - HTTP 查询接口
+- 本地查看器默认渲染 HTML 邮件正文，也可在右上角设置为 Text 渲染
 
 ## 启动
 
@@ -27,6 +30,7 @@ npm start
 - `SMTP_PORT=2525`
 - `HTTP_PORT=3000`
 - `API_KEY=` 留空时不校验，设置后接口需要带 key
+- `ALLOWED_RECIPIENTS=` 逗号分隔的允许收件邮箱或域名
 - `DATABASE_URL=` Postgres 连接串
 - `DATA_DIR=./data` 项目内固定数据目录
 
@@ -42,6 +46,7 @@ SMTP_PORT=25 HTTP_PORT=3000 API_KEY=your-secret-key DATABASE_URL=postgres://post
 HTTP_PORT=3000
 SMTP_PORT=2525
 API_KEY=your-secret-key
+ALLOWED_RECIPIENTS=berich.xyz,mail.berich.xyz
 DATA_DIR=./data
 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/mail_service
 ```
@@ -105,6 +110,7 @@ SMTP_PORT=2525
 HTTP_BIND_PORT=3000
 SMTP_BIND_PORT=25
 API_KEY=replace-with-a-long-random-string
+ALLOWED_RECIPIENTS=berich.xyz,mail.berich.xyz
 DATA_DIR=./data
 DATABASE_URL=postgres://postgres:strong-password@your-postgres-host:5432/mail_service
 ```
@@ -176,6 +182,7 @@ SMTP_PORT=2525
 HTTP_BIND_PORT=3000
 SMTP_BIND_PORT=25
 API_KEY=replace-with-a-long-random-string
+ALLOWED_RECIPIENTS=berich.xyz,mail.berich.xyz
 DATA_DIR=./data
 DATABASE_URL=postgres://postgres:strong-password@your-postgres-host:5432/mail_service
 ```
@@ -203,6 +210,36 @@ curl http://127.0.0.1:3000/health
 ```bash
 curl -H "x-api-key: your-secret-key" http://127.0.0.1:3000/mailboxes
 ```
+
+查看收件白名单：
+
+```bash
+curl -H "x-api-key: your-secret-key" http://127.0.0.1:3000/allowlist
+```
+
+添加允许收件域名或邮箱：
+
+```bash
+curl -X POST \
+  -H "x-api-key: your-secret-key" \
+  -H "content-type: application/json" \
+  -d '{"entry":"berich.xyz"}' \
+  http://127.0.0.1:3000/allowlist
+```
+
+删除白名单条目：
+
+```bash
+curl -X DELETE \
+  -H "x-api-key: your-secret-key" \
+  "http://127.0.0.1:3000/allowlist?entry=berich.xyz"
+```
+
+白名单说明：
+
+- 条目可以是完整邮箱，例如 `jasper@mail.berich.xyz`
+- 条目也可以是域名，例如 `mail.berich.xyz` 或 `berich.xyz`
+- SMTP 在 `RCPT TO` 阶段拒绝非白名单收件人，拒收邮件不会入库
 
 按邮箱查看邮件列表：
 
@@ -310,6 +347,15 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/mail_service
 - Postgres 数据卷目录
 - 后续附件文件目录
 - 运行时导出文件
+
+## 内容安全
+
+投递进来的邮件内容按不可信输入处理：
+
+- 服务端只用 `mailparser` 解析邮件并写入 Postgres，不会 `eval` 或执行邮件正文。
+- SMTP 在 `RCPT TO` 阶段执行收件白名单校验，非白名单收件人会被拒收，不会入库。
+- 结构化数据提取只做正则和字符串处理，内置提取六位验证码和用户可能需要点击的链接。
+- 本地查看器详情正文默认使用 HTML 渲染；右上角 `Settings` 可以设置默认 Text/HTML 渲染。HTML 渲染会放进 sandbox iframe，并禁止脚本执行。
 
 如果你使用项目自带的 Postgres 容器，数据库文件会在：
 

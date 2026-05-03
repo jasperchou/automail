@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Automail Viewer</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css?v=20260503-1">
+    <link rel="stylesheet" href="./styles.css?v=20260503-5">
   </head>
   <body>
     <main class="shell">
@@ -34,12 +34,16 @@
             <span>Latest</span>
             <input id="limitInput" type="number" min="1" max="100" value="50">
           </label>
-          <label class="toggle">
-            <input id="autoRefreshInput" type="checkbox" checked>
-            <span>Auto refresh</span>
+          <label class="toggle-field">
+            <span>Refresh</span>
+            <span class="toggle">
+              <input id="autoRefreshInput" type="checkbox" checked>
+              <span>Auto</span>
+            </span>
           </label>
           <button type="submit">Search</button>
         </form>
+        <button id="settingsButton" class="settings-button" type="button" aria-haspopup="dialog" aria-expanded="false">Settings</button>
       </header>
 
       <section class="workspace">
@@ -66,8 +70,35 @@
         </article>
       </section>
     </main>
+    <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
+    <aside id="settingsPanel" class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+      <div class="settings-head">
+        <div>
+          <h2 id="settingsTitle">Settings</h2>
+          <p>Local viewer preferences</p>
+        </div>
+        <button id="settingsCloseButton" class="settings-close" type="button" aria-label="Close settings">Close</button>
+      </div>
+      <fieldset class="setting-group">
+        <legend>Default body rendering</legend>
+        <label class="setting-option">
+          <input type="radio" name="defaultBodyMode" value="text">
+          <span>
+            <strong>Text</strong>
+            <small>Fastest and safest default.</small>
+          </span>
+        </label>
+        <label class="setting-option">
+          <input type="radio" name="defaultBodyMode" value="html">
+          <span>
+            <strong>Render HTML</strong>
+            <small>Default. Renders email layout in a sandbox without scripts.</small>
+          </span>
+        </label>
+      </fieldset>
+    </aside>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script src="./app.js?v=20260503-1" type="module"></script>
+    <script src="./app.js?v=20260503-5" type="module"></script>
   </body>
 </html>

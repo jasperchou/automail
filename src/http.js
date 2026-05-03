@@ -1,7 +1,7 @@
 export function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
     'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
     'access-control-allow-headers': 'content-type, x-api-key',
     'content-type': 'application/json; charset=utf-8'
   });
@@ -11,11 +11,25 @@ export function sendJson(res, statusCode, payload) {
 export function sendNoContent(res) {
   res.writeHead(204, {
     'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
     'access-control-allow-headers': 'content-type, x-api-key',
     'access-control-max-age': '86400'
   });
   res.end();
+}
+
+async function readJsonBody(req) {
+  const chunks = [];
+
+  for await (const chunk of req) {
+    chunks.push(chunk);
+  }
+
+  if (chunks.length === 0) {
+    return {};
+  }
+
+  return JSON.parse(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString('utf8'));
 }
 
 export function createRoute({ config, storage }) {
@@ -101,6 +115,64 @@ export function createRoute({ config, storage }) {
           console.error(error);
           sendJson(res, 500, { error: 'Failed to list mailboxes' });
         });
+    }
+
+    if (pathname === '/allowlist') {
+      if (!isAuthorized(req, url)) {
+        return unauthorized(res);
+      }
+
+      if (req.method === 'GET') {
+        return storage.listRecipientAllowlist()
+          .then((entries) => sendJson(res, 200, { entries }))
+          .catch((error) => {
+            console.error(error);
+            sendJson(res, 500, { error: 'Failed to list allowlist' });
+          });
+      }
+
+      if (req.method === 'POST') {
+        return readJsonBody(req)
+          .then((body) => {
+            if (!body.entry) {
+              sendJson(res, 400, { error: 'entry is required' });
+              return null;
+            }
+            return storage.addRecipientAllowlistEntry(body.entry);
+          })
+          .then((entry) => {
+            if (entry) {
+              sendJson(res, 201, { entry });
+            }
+          })
+          .catch((error) => {
+            console.error(error);
+            if (error instanceof SyntaxError) {
+              return sendJson(res, 400, { error: 'Invalid JSON body' });
+            }
+            sendJson(res, 500, { error: 'Failed to add allowlist entry' });
+          });
+      }
+
+      if (req.method === 'DELETE') {
+        const entry = url.searchParams.get('entry');
+
+        if (!entry) {
+          return sendJson(res, 400, { error: 'entry query param is required' });
+        }
+
+        return storage.removeRecipientAllowlistEntry(entry)
+          .then((removed) => {
+            if (!removed) {
+              return notFound(res, 'Allowlist entry not found');
+            }
+            sendJson(res, 200, { removed: true });
+          })
+          .catch((error) => {
+            console.error(error);
+            sendJson(res, 500, { error: 'Failed to remove allowlist entry' });
+          });
+      }
     }
 
     if (req.method === 'GET' && pathname === '/messages') {

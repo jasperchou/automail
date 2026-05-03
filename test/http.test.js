@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createRoute } from '../src/http.js';
@@ -17,8 +18,10 @@ function createMockRes() {
   };
 }
 
-async function callRoute(route, { method = 'GET', url, headers = {}, silenceConsoleError = false }) {
-  const req = { method, url, headers };
+async function callRoute(route, { method = 'GET', url, headers = {}, body = null, silenceConsoleError = false }) {
+  const req = body === null
+    ? { method, url, headers }
+    : Object.assign(Readable.from([body]), { method, url, headers });
   const res = createMockRes();
   const originalConsoleError = console.error;
 
@@ -125,7 +128,115 @@ test('options request returns cors preflight response', async () => {
 
   assert.equal(response.statusCode, 204);
   assert.equal(response.headers['access-control-allow-origin'], '*');
+  assert.equal(response.headers['access-control-allow-methods'], 'GET, POST, DELETE, OPTIONS');
   assert.equal(response.body, null);
+});
+
+test('allowlist endpoint requires api key and supports list add delete', async () => {
+  const entries = new Map();
+  const route = createRoute({
+    config: {
+      apiKey: 'secret',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      listRecipientAllowlist: async () => [...entries.values()],
+      addRecipientAllowlistEntry: async (entry) => {
+        const normalizedEntry = entry.trim().toLowerCase().replace(/^@+/, '');
+        const record = {
+          entry: normalizedEntry,
+          createdAt: '2026-05-03T00:00:00.000Z'
+        };
+        entries.set(normalizedEntry, record);
+        return record;
+      },
+      removeRecipientAllowlistEntry: async (entry) => entries.delete(entry.trim().toLowerCase().replace(/^@+/, ''))
+    }
+  });
+
+  const unauthorized = await callRoute(route, { url: '/allowlist' });
+  const added = await callRoute(route, {
+    method: 'POST',
+    url: '/allowlist',
+    headers: { 'x-api-key': 'secret' },
+    body: JSON.stringify({ entry: '@berich.xyz' })
+  });
+  const listed = await callRoute(route, {
+    url: '/allowlist',
+    headers: { 'x-api-key': 'secret' }
+  });
+  const removed = await callRoute(route, {
+    method: 'DELETE',
+    url: '/allowlist?entry=berich.xyz',
+    headers: { 'x-api-key': 'secret' }
+  });
+
+  assert.equal(unauthorized.statusCode, 401);
+  assert.equal(added.statusCode, 201);
+  assert.equal(added.body.entry.entry, 'berich.xyz');
+  assert.deepEqual(listed.body.entries.map((item) => item.entry), ['berich.xyz']);
+  assert.equal(removed.statusCode, 200);
+  assert.equal(removed.body.removed, true);
+});
+
+test('allowlist endpoint validates entry and missing deletes', async () => {
+  const route = createRoute({
+    config: {
+      apiKey: '',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      addRecipientAllowlistEntry: async () => null,
+      removeRecipientAllowlistEntry: async () => false
+    }
+  });
+
+  const missingPostEntry = await callRoute(route, {
+    method: 'POST',
+    url: '/allowlist',
+    body: '{}'
+  });
+  const missingDeleteEntry = await callRoute(route, {
+    method: 'DELETE',
+    url: '/allowlist'
+  });
+  const notFound = await callRoute(route, {
+    method: 'DELETE',
+    url: '/allowlist?entry=missing.example'
+  });
+
+  assert.equal(missingPostEntry.statusCode, 400);
+  assert.equal(missingDeleteEntry.statusCode, 400);
+  assert.equal(notFound.statusCode, 404);
+});
+
+test('allowlist endpoint rejects invalid json body', async () => {
+  const route = createRoute({
+    config: {
+      apiKey: '',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {}
+  });
+
+  const response = await callRoute(route, {
+    method: 'POST',
+    url: '/allowlist',
+    body: '{',
+    silenceConsoleError: true
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.error, 'Invalid JSON body');
 });
 
 test('messages endpoint validates mailbox and returns not found when absent', async () => {

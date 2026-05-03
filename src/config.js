@@ -70,6 +70,13 @@ export function createConfig(options = {}) {
     return path.resolve(rootDir, resolvedValue);
   }
 
+  function envList(name) {
+    return env(name, '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
   return {
     rootDir,
     envFilePath,
@@ -79,6 +86,7 @@ export function createConfig(options = {}) {
     httpHost: env('HTTP_HOST', '0.0.0.0'),
     apiKey: env('API_KEY', ''),
     databaseUrl: env('DATABASE_URL', 'postgres://postgres:postgres@127.0.0.1:5432/mail_service'),
-    dataDir: resolveFromRoot(env('DATA_DIR', ''), 'data')
+    dataDir: resolveFromRoot(env('DATA_DIR', ''), 'data'),
+    allowedRecipients: envList('ALLOWED_RECIPIENTS')
   };
 }

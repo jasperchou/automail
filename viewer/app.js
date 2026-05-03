@@ -6,6 +6,7 @@ const state = {
   selectedMailbox: 'all',
   messages: [],
   selectedMessageId: '',
+  bodyMode: localStorage.getItem('automail.bodyMode') === 'html' ? 'html' : 'text',
   refreshTimer: null,
   isRefreshing: false,
   filters: {
@@ -147,6 +148,25 @@ function messageBodyText(message) {
   }
 
   return stripHtml(message.html).trim();
+}
+
+function renderableHtmlDocument(value = '') {
+  const source = String(value || '');
+  const headContent = [
+    '<meta charset="utf-8">',
+    '<meta http-equiv="Content-Security-Policy" content="script-src \'none\'">',
+    '<base target="_blank">'
+  ].join('');
+
+  if (/<head\b[^>]*>/i.test(source)) {
+    return source.replace(/<head\b([^>]*)>/i, `<head$1>${headContent}`);
+  }
+
+  if (/<html\b[^>]*>/i.test(source)) {
+    return source.replace(/<html\b([^>]*)>/i, `<html$1><head>${headContent}</head>`);
+  }
+
+  return `<!doctype html><html><head>${headContent}</head><body>${source}</body></html>`;
 }
 
 function extractHtmlLinks(value) {
@@ -337,6 +357,28 @@ function renderEmptyDetail() {
 function renderMessageDetail(message) {
   const structuredItems = extractStructuredItems(message);
   const bodyText = messageBodyText(message);
+  const hasHtml = Boolean(String(message.html || '').trim());
+  const bodyMode = hasHtml ? state.bodyMode : 'text';
+  const bodyToggleHtml = hasHtml
+    ? `
+      <div class="body-toolbar" role="group" aria-label="Message body view mode">
+        <button class="body-mode${bodyMode === 'text' ? ' active' : ''}" type="button" data-body-mode="text">Text</button>
+        <button class="body-mode${bodyMode === 'html' ? ' active' : ''}" type="button" data-body-mode="html">Render HTML</button>
+      </div>
+    `
+    : '';
+  const bodyHtml = bodyMode === 'html'
+    ? `
+      <iframe
+        class="html-frame"
+        title="Rendered email HTML"
+        sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-top-navigation-by-user-activation"
+        referrerpolicy="no-referrer"
+        csp="script-src 'none'"
+        srcdoc="${escapeAttribute(renderableHtmlDocument(message.html))}"
+      ></iframe>
+    `
+    : `<div class="mail-body">${escapeHtml(bodyText || '(empty body)')}</div>`;
   const structuredHtml = structuredItems.length > 0
     ? `
       <section class="extracted">
@@ -354,6 +396,7 @@ function renderMessageDetail(message) {
     : '';
 
   nodes.messageDetail.className = 'detail-inner';
+  nodes.messageDetail.dataset.messageId = message.id || '';
   nodes.messageDetail.innerHTML = `
     <h2 class="detail-title">${message.subject || '(no subject)'}</h2>
     ${structuredHtml}
@@ -364,12 +407,20 @@ function renderMessageDetail(message) {
       <strong>Stored</strong><span>${fullTime(message.storedAt)}</span>
       <strong>Date</strong><span>${fullTime(message.date)}</span>
     </div>
-    <div class="mail-body">${escapeHtml(bodyText || '(empty body)')}</div>
+    ${bodyToggleHtml}
+    ${bodyHtml}
   `;
   nodes.messageDetail.querySelectorAll('[data-copy]').forEach((item) => {
     item.addEventListener('click', (event) => {
       event.preventDefault();
       copyText(item.dataset.copy);
+    });
+  });
+  nodes.messageDetail.querySelectorAll('[data-body-mode]').forEach((item) => {
+    item.addEventListener('click', () => {
+      state.bodyMode = item.dataset.bodyMode === 'html' ? 'html' : 'text';
+      localStorage.setItem('automail.bodyMode', state.bodyMode);
+      renderMessageDetail(message);
     });
   });
 }

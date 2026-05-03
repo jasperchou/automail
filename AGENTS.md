@@ -72,7 +72,7 @@ npm run backfill:structured -- --mailbox=jasper@mail.berich.xyz
 - Mailbox names, emails, verification codes, and structured links should be easy to copy.
 - Toasts should be visible in the top-right.
 - API base can be displayed read-only; API key should not be shown in the UI.
-- Do not render untrusted email HTML directly. Show a text-only body by default and keep useful links in structured data.
+- Show a text-only body by default. Optional HTML rendering must stay inside a sandboxed iframe without script execution.
 
 ## Deployment Notes
 

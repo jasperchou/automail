@@ -1,7 +1,7 @@
 import { createConfig } from './config.js';
 import { createStorage } from './storage.js';
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const result = {
     mailbox: ''
   };
@@ -36,7 +36,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('backfill-structured.js')) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

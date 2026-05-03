@@ -141,6 +141,10 @@ test('pickText falls back to html when text is absent', () => {
   assert.equal(pickText({ html: '<p>Hello <b>world</b></p>' }), 'Hello world');
 });
 
+test('pickText returns empty string when no body exists', () => {
+  assert.equal(pickText({}), '');
+});
+
 test('serializeHeaders keeps complex values JSON-safe', () => {
   const headers = new Map([
     ['subject', 'hello'],
@@ -153,6 +157,18 @@ test('serializeHeaders keeps complex values JSON-safe', () => {
   assert.equal(result.subject, 'hello');
   assert.equal(result.date, '2026-05-03T04:05:00.000Z');
   assert.deepEqual(result.from, { value: [{ address: 'a@example.com' }] });
+});
+
+test('serializeHeaders stringifies circular values', () => {
+  const circular = {};
+  circular.self = circular;
+  const headers = new Map([
+    ['x-circular', circular]
+  ]);
+
+  const result = serializeHeaders(headers);
+
+  assert.equal(result['x-circular'], '[object Object]');
 });
 
 test('storage stores, lists, and fetches messages in postgres', async () => {
@@ -258,13 +274,13 @@ test('listMessages supports storedAt timestamp filtering', async () => {
       cc: [],
       bcc: [],
       message_date: '2024-05-01T00:00:00.000Z',
-          text_content: 'old body',
-          html_content: null,
-          headers: {},
-          attachments: [],
-          structured_data: { version: 1, items: [] },
-          raw_content: 'old raw'
-        },
+      text_content: 'old body',
+      html_content: null,
+      headers: {},
+      attachments: [],
+      structured_data: { version: 1, items: [] },
+      raw_content: 'old raw'
+    },
     {
       id: 'new',
       mailbox: 'user@example.com',
@@ -348,6 +364,83 @@ test('listAllMessages returns messages across mailboxes ordered by latest first'
   assert.equal(result.messages[1].id, 'old');
 });
 
+test('listMessages clamps limit and offset options', async () => {
+  const pool = createPoolMock();
+  const storage = createStorage('postgres://example', { pool });
+  await storage.init();
+
+  pool.state.mailboxes.set('user@example.com', { email: 'user@example.com' });
+  for (let index = 0; index < 3; index += 1) {
+    pool.state.messages.push({
+      id: `message-${index}`,
+      mailbox: 'user@example.com',
+      stored_at: `2024-05-0${index + 1}T00:00:00.000Z`,
+      mail_from: 'sender@example.com',
+      rcpt_to: ['user@example.com'],
+      subject: `message ${index}`,
+      sender: [{ address: 'sender@example.com', name: '' }],
+      recipient: [{ address: 'user@example.com', name: '' }],
+      cc: [],
+      bcc: [],
+      message_date: null,
+      text_content: `body ${index}`,
+      html_content: null,
+      headers: {},
+      attachments: [],
+      structured_data: { version: 1, items: [] },
+      raw_content: `raw ${index}`
+    });
+  }
+
+  const tooLarge = await storage.listMessages('user@example.com', { limit: 200, offset: -10 });
+  const invalid = await storage.listMessages('user@example.com', { limit: 'abc', offset: 'abc' });
+
+  assert.equal(tooLarge.limit, 100);
+  assert.equal(tooLarge.offset, 0);
+  assert.equal(invalid.limit, 20);
+  assert.equal(invalid.offset, 0);
+});
+
+test('getMessage filters ignored resource links from stored structured data', async () => {
+  const pool = createPoolMock();
+  const storage = createStorage('postgres://example', { pool });
+  await storage.init();
+
+  pool.state.mailboxes.set('user@example.com', { email: 'user@example.com' });
+  pool.state.messages.push({
+    id: 'message-with-old-structured-data',
+    mailbox: 'user@example.com',
+    stored_at: '2024-05-01T00:00:00.000Z',
+    mail_from: 'sender@example.com',
+    rcpt_to: ['user@example.com'],
+    subject: 'old structured data',
+    sender: [{ address: 'sender@example.com', name: '' }],
+    recipient: [{ address: 'user@example.com', name: '' }],
+    cc: [],
+    bcc: [],
+    message_date: null,
+    text_content: 'body',
+    html_content: null,
+    headers: {},
+    attachments: [],
+    structured_data: {
+      version: 1,
+      items: [
+        { type: 'link', value: 'https://example.com/logo.png' },
+        { type: 'link', value: 'https://example.com/action' }
+      ]
+    },
+    raw_content: 'raw'
+  });
+
+  const message = await storage.getMessage('user@example.com', 'message-with-old-structured-data');
+
+  assert.deepEqual(
+    message.structuredData.items.map((item) => item.value),
+    ['https://example.com/action']
+  );
+});
+
 test('storeMessage persists structured data for codes and links', async () => {
   const pool = createPoolMock();
   const storage = createStorage('postgres://example', { pool });
@@ -417,4 +510,59 @@ test('backfillStructuredData recalculates historical structured data', async () 
       ['link', 'https://example.com/action']
     ]
   );
+});
+
+test('backfillStructuredData can process all mailboxes', async () => {
+  const pool = createPoolMock();
+  const storage = createStorage('postgres://example', { pool });
+  await storage.init();
+
+  pool.state.messages.push(
+    {
+      id: 'a',
+      mailbox: 'a@example.com',
+      stored_at: '2024-05-01T00:00:00.000Z',
+      mail_from: 'sender@example.com',
+      rcpt_to: ['a@example.com'],
+      subject: 'Code 111111',
+      sender: [{ address: 'sender@example.com', name: '' }],
+      recipient: [{ address: 'a@example.com', name: '' }],
+      cc: [],
+      bcc: [],
+      message_date: null,
+      text_content: 'Use 111111',
+      html_content: null,
+      headers: {},
+      attachments: [],
+      structured_data: { version: 1, items: [] },
+      raw_content: 'raw'
+    },
+    {
+      id: 'b',
+      mailbox: 'b@example.com',
+      stored_at: '2024-05-02T00:00:00.000Z',
+      mail_from: 'sender@example.com',
+      rcpt_to: ['b@example.com'],
+      subject: 'Code 222222',
+      sender: [{ address: 'sender@example.com', name: '' }],
+      recipient: [{ address: 'b@example.com', name: '' }],
+      cc: [],
+      bcc: [],
+      message_date: null,
+      text_content: 'Use 222222',
+      html_content: null,
+      headers: {},
+      attachments: [],
+      structured_data: { version: 1, items: [] },
+      raw_content: 'raw'
+    }
+  );
+
+  const result = await storage.backfillStructuredData();
+
+  assert.deepEqual(result, {
+    mailbox: 'all',
+    scanned: 2,
+    updated: 2
+  });
 });

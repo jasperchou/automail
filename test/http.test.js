@@ -17,11 +17,22 @@ function createMockRes() {
   };
 }
 
-async function callRoute(route, { method = 'GET', url, headers = {} }) {
+async function callRoute(route, { method = 'GET', url, headers = {}, silenceConsoleError = false }) {
   const req = { method, url, headers };
   const res = createMockRes();
-  route(req, res);
-  await new Promise((resolve) => setImmediate(resolve));
+  const originalConsoleError = console.error;
+
+  if (silenceConsoleError) {
+    console.error = () => {};
+  }
+
+  try {
+    route(req, res);
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    console.error = originalConsoleError;
+  }
+
   return {
     statusCode: res.statusCode,
     headers: res.headers,
@@ -71,6 +82,31 @@ test('mailboxes endpoint requires api key when configured', async () => {
   assert.equal(authorized.statusCode, 200);
   assert.deepEqual(authorized.body.mailboxes, ['a@example.com']);
   assert.equal(authorized.headers['access-control-allow-origin'], '*');
+});
+
+test('mailboxes endpoint accepts api key query parameter and handles storage errors', async () => {
+  const route = createRoute({
+    config: {
+      apiKey: 'secret',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      listMailboxes: async () => {
+        throw new Error('database unavailable');
+      }
+    }
+  });
+
+  const response = await callRoute(route, {
+    url: '/mailboxes?api_key=secret',
+    silenceConsoleError: true
+  });
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.body.error, 'Failed to list mailboxes');
 });
 
 test('options request returns cors preflight response', async () => {
@@ -162,6 +198,72 @@ test('messages endpoint forwards pagination and filter params', async () => {
   assert.equal(response.body.messages.length, 1);
 });
 
+test('messages endpoint normalizes invalid pagination and timestamp params', async () => {
+  const calls = [];
+  const route = createRoute({
+    config: {
+      apiKey: '',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      listMessages: async (mailbox, options) => {
+        calls.push({ mailbox, options });
+        return {
+          total: 0,
+          limit: options.limit,
+          offset: options.offset,
+          messages: []
+        };
+      }
+    }
+  });
+
+  const response = await callRoute(route, {
+    url: '/messages?mailbox=user@example.com&limit=-1&offset=nope&since=invalid&until='
+  });
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(calls[0], {
+    mailbox: 'user@example.com',
+    options: {
+      limit: 20,
+      offset: 0,
+      sender: '',
+      keyword: '',
+      since: null,
+      until: null
+    }
+  });
+});
+
+test('messages endpoint returns server error when list fails', async () => {
+  const route = createRoute({
+    config: {
+      apiKey: '',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      listMessages: async () => {
+        throw new Error('database unavailable');
+      }
+    }
+  });
+
+  const response = await callRoute(route, {
+    url: '/messages?mailbox=user@example.com',
+    silenceConsoleError: true
+  });
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.body.error, 'Failed to list messages');
+});
+
 test('message detail endpoint returns stored message', async () => {
   const route = createRoute({
     config: {
@@ -183,6 +285,53 @@ test('message detail endpoint returns stored message', async () => {
   assert.equal(response.statusCode, 200);
   assert.equal(response.body.id, 'abc123');
   assert.equal(response.body.subject, 'hello');
+});
+
+test('message detail endpoint validates mailbox and missing records', async () => {
+  const route = createRoute({
+    config: {
+      apiKey: '',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      getMessage: async () => null
+    }
+  });
+
+  const missingParam = await callRoute(route, { url: '/messages/abc123' });
+  const missingRecord = await callRoute(route, { url: '/messages/abc123?mailbox=user@example.com' });
+
+  assert.equal(missingParam.statusCode, 400);
+  assert.equal(missingRecord.statusCode, 404);
+  assert.equal(missingRecord.body.error, 'Message not found');
+});
+
+test('message detail endpoint returns server error when lookup fails', async () => {
+  const route = createRoute({
+    config: {
+      apiKey: '',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      getMessage: async () => {
+        throw new Error('database unavailable');
+      }
+    }
+  });
+
+  const response = await callRoute(route, {
+    url: '/messages/abc123?mailbox=user@example.com',
+    silenceConsoleError: true
+  });
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.body.error, 'Failed to get message');
 });
 
 test('messages endpoint supports all mailboxes', async () => {
@@ -216,4 +365,22 @@ test('messages endpoint supports all mailboxes', async () => {
   assert.equal(calls[0].limit, 10);
   assert.equal(response.body.mailbox, 'all');
   assert.equal(response.body.messages[0].mailbox, 'a@example.com');
+});
+
+test('unknown route returns not found', async () => {
+  const route = createRoute({
+    config: {
+      apiKey: '',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {}
+  });
+
+  const response = await callRoute(route, { url: '/missing' });
+
+  assert.equal(response.statusCode, 404);
+  assert.equal(response.body.error, 'Not found');
 });

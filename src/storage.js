@@ -201,8 +201,10 @@ export function createStorage(databaseUrl, options = {}) {
   }
 
   function normalizeListOptions(options = {}) {
-    const limit = Number.isFinite(options.limit) ? options.limit : Number(options.limit || 20);
-    const offset = Number.isFinite(options.offset) ? options.offset : Number(options.offset || 0);
+    const parsedLimit = Number(options.limit || 20);
+    const parsedOffset = Number(options.offset || 0);
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 20;
+    const offset = Number.isFinite(parsedOffset) ? parsedOffset : 0;
 
     return {
       limit: Math.max(1, Math.min(limit, 100)),

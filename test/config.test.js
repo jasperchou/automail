@@ -23,6 +23,12 @@ test('loadEnvFile parses env values and ignores comments', async () => {
   assert.equal(env.INVALID_LINE, undefined);
 });
 
+test('loadEnvFile returns empty object when file is missing', () => {
+  const env = loadEnvFile(path.join(os.tmpdir(), `missing-mail-env-${Date.now()}`));
+
+  assert.deepEqual(env, {});
+});
+
 test('createConfig prefers process env over local env', () => {
   const config = createConfig({
     rootDir: '/tmp/mail-root',
@@ -43,4 +49,16 @@ test('createConfig prefers process env over local env', () => {
   assert.equal(config.smtpPort, 2525);
   assert.equal(config.databaseUrl, 'postgres://file-user:file-pass@db:5432/file_db');
   assert.equal(config.dataDir, path.resolve('/tmp/mail-root', 'mail-data'));
+});
+
+test('createConfig preserves absolute data directory', () => {
+  const config = createConfig({
+    rootDir: '/tmp/mail-root',
+    localEnv: {
+      DATA_DIR: '/var/lib/automail'
+    },
+    processEnv: {}
+  });
+
+  assert.equal(config.dataDir, '/var/lib/automail');
 });

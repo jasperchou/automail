@@ -30,6 +30,21 @@ test('extractStructuredData extracts six digit verification codes and links', ()
   );
 });
 
+test('extractStructuredData deduplicates codes and links', () => {
+  const result = extractStructuredData({
+    subject: 'Code 257535',
+    text: 'Code 257535, open https://example.com/action and https://example.com/action.'
+  });
+
+  assert.deepEqual(
+    result.items.map((item) => [item.type, item.value]),
+    [
+      ['verification_code', '257535'],
+      ['link', 'https://example.com/action']
+    ]
+  );
+});
+
 test('extractHtmlLinks extracts only anchor href links', () => {
   assert.deepEqual(
     extractHtmlLinks('<a href="https://example.com/a">A</a><img src="https://example.com/b.png">'),
@@ -69,6 +84,7 @@ test('extractStructuredData skips ignored resource links but keeps downloads', (
 
 test('isImageLikeLink detects common image extensions', () => {
   assert.equal(isImageLikeLink('https://example.com/logo.png?x=1'), true);
+  assert.equal(isImageLikeLink('not a url/logo.webp'), true);
   assert.equal(isImageLikeLink('https://example.com/login'), false);
 });
 
@@ -79,6 +95,7 @@ test('isIgnoredResourceLink detects static resources but keeps archives', () => 
   assert.equal(isIgnoredResourceLink('https://u20216706.ct.sendgrid.net/wf/open?upn=abc'), true);
   assert.equal(isIgnoredResourceLink('https://example.com/export.zip'), false);
   assert.equal(isIgnoredResourceLink('https://example.com/action'), false);
+  assert.equal(isIgnoredResourceLink('not a url/font.ttf'), true);
 });
 
 test('normalizeStructuredData filters ignored resource link items', () => {
@@ -99,4 +116,12 @@ test('normalizeStructuredData filters ignored resource link items', () => {
       ['verification_code', '257535']
     ]
   );
+});
+
+test('normalizeStructuredData handles missing items', () => {
+  assert.deepEqual(normalizeStructuredData(null), {
+    version: 1,
+    extractedAt: undefined,
+    items: []
+  });
 });

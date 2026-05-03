@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Automail Viewer</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Automail</h1>
+            <p id="statusText">Ready</p>
+          </div>
+        </div>
+        <form id="searchForm" class="search">
+          <label>
+            <span>API</span>
+            <input id="apiBaseInput" type="url" autocomplete="off" spellcheck="false">
+          </label>
+          <label>
+            <span>Key</span>
+            <input id="apiKeyInput" type="password" autocomplete="off" spellcheck="false">
+          </label>
+          <label>
+            <span>Sender</span>
+            <input id="senderInput" type="search" placeholder="sender@example.com">
+          </label>
+          <label>
+            <span>Keyword</span>
+            <input id="keywordInput" type="search" placeholder="subject or content">
+          </label>
+          <label>
+            <span>Latest</span>
+            <input id="limitInput" type="number" min="1" max="100" value="50">
+          </label>
+          <label class="toggle">
+            <input id="autoRefreshInput" type="checkbox" checked>
+            <span>Auto refresh</span>
+          </label>
+          <button type="submit">Search</button>
+        </form>
+      </header>
+
+      <section class="workspace">
+        <aside class="mailboxes">
+          <div class="panel-head">
+            <h2>Mailboxes</h2>
+            <button id="refreshButton" type="button">Refresh</button>
+          </div>
+          <div id="mailboxList" class="mailbox-list"></div>
+        </aside>
+
+        <section class="messages">
+          <div class="panel-head">
+            <h2 id="messageTitle">All Mail</h2>
+            <p id="messageCount"></p>
+          </div>
+          <div id="messageList" class="message-list"></div>
+        </section>
+
+        <article class="detail">
+          <div id="messageDetail" class="detail-inner empty">
+            <p>Select a message to inspect it.</p>
+          </div>
+        </article>
+      </section>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

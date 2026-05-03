@@ -1,0 +1,10 @@
+services:
+  app:
+    networks:
+      - default
+      - shared
+
+networks:
+  shared:
+    external: true
+    name: ${EXTERNAL_DOCKER_NETWORK}

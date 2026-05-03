@@ -1,0 +1,17 @@
+services:
+  app:
+    build: .
+    container_name: simple-mail-service
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${HTTP_BIND_PORT:-3000}:${HTTP_PORT:-3000}"
+      - "${SMTP_BIND_PORT:-25}:${SMTP_PORT:-2525}"
+    volumes:
+      - ${DATA_DIR:-./data}:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5

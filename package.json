@@ -1,0 +1,17 @@
+{
+  "name": "simple-mail-service",
+  "version": "0.1.0",
+  "description": "Minimal SMTP receive service with HTTP APIs for mailbox retrieval",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "backfill:structured": "node src/backfill-structured.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "mailparser": "^3.7.5",
+    "pg": "^8.20.0",
+    "smtp-server": "^3.14.0"
+  }
+}

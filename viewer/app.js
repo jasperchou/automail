@@ -11,6 +11,7 @@ import {
 import {
   extractStructuredItems,
   fitIframeToContent,
+  isTrackingLink,
   messageBodyText,
   renderableHtmlDocument
 } from './mail-content.js';
@@ -201,6 +202,17 @@ function renderEmptyDetail() {
 
 function renderMessageDetail(message) {
   const structuredItems = extractStructuredItems(message);
+  const visibleStructuredItems = [];
+  const foldedTrackingItems = [];
+
+  for (const item of structuredItems) {
+    if (item.type === 'link' && isTrackingLink(item.value)) {
+      foldedTrackingItems.push(item);
+      continue;
+    }
+    visibleStructuredItems.push(item);
+  }
+
   const bodyText = messageBodyText(message);
   const hasHtml = Boolean(String(message.html || '').trim());
   const selectedBodyMode = state.bodyModeByMessageId.get(message.id) || state.defaultBodyMode;
@@ -226,10 +238,10 @@ function renderMessageDetail(message) {
       ></iframe>
     `
     : `<div class="mail-body">${escapeHtml(bodyText || '(empty body)')}</div>`;
-  const structuredHtml = structuredItems.length > 0
+  const structuredHtml = visibleStructuredItems.length > 0
     ? `
       <section class="extracted">
-        ${structuredItems.map((item) => `
+        ${visibleStructuredItems.map((item) => `
           <div class="extract-item ${item.type === 'link' ? 'link-item' : ''}">
             <button class="extract-copy" type="button" data-copy="${escapeHtml(item.value)}">
               <span>${escapeHtml(item.label)}</span>
@@ -241,12 +253,25 @@ function renderMessageDetail(message) {
       </section>
     `
     : '';
+  const foldedTrackingHtml = foldedTrackingItems.length > 0
+    ? `
+      <details class="folded-links">
+        <summary>${foldedTrackingItems.length} tracking link${foldedTrackingItems.length === 1 ? '' : 's'} folded</summary>
+        <div class="folded-link-list">
+          ${foldedTrackingItems.map((item) => `
+            <button class="folded-link" type="button" data-copy="${escapeHtml(item.value)}">${escapeHtml(item.value)}</button>
+          `).join('')}
+        </div>
+      </details>
+    `
+    : '';
 
   nodes.messageDetail.className = 'detail-inner';
   nodes.messageDetail.dataset.messageId = message.id || '';
   nodes.messageDetail.innerHTML = `
     <h2 class="detail-title">${message.subject || '(no subject)'}</h2>
     ${structuredHtml}
+    ${foldedTrackingHtml}
     <div class="detail-grid">
       <strong>Mailbox</strong><span>${message.mailbox}</span>
       <strong>From</strong><span>${formatAddressChips(message.from)}</span>

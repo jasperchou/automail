@@ -69,6 +69,25 @@ export function isIgnoredResourceLink(value = '') {
   }
 }
 
+export function isTrackingLink(value = '') {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    const pathSegments = url.pathname
+      .toLowerCase()
+      .split('/')
+      .filter(Boolean);
+    const tokenPattern = /^(?:t|track|tracking|trk|click|clicks|clickthrough|click-through|redirect|redir|r)$/;
+
+    return (
+      pathSegments.some((segment) => tokenPattern.test(segment)) ||
+      /(?:^|[.-])(?:track|tracking|trk|click)(?:[.-]|$)/.test(hostname)
+    );
+  } catch {
+    return /(?:^|[/?#&_.-])(?:track|tracking|trk|click|clicks|clickthrough|redirect|redir)(?:$|[/?#&_.-])/i.test(String(value));
+  }
+}
+
 export function extractStructuredItems(message) {
   if (message.structuredData?.items?.length) {
     return message.structuredData.items

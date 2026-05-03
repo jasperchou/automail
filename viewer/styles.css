@@ -470,6 +470,40 @@ button:hover {
   background: #d5ebe3;
 }
 
+.folded-links {
+  margin: -6px 0 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.folded-links summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.folded-link-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.folded-link {
+  width: 100%;
+  height: auto;
+  padding: 8px 10px;
+  border: 1px dashed rgba(104, 112, 100, 0.34);
+  background: rgba(255, 255, 255, 0.54);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.folded-link:hover {
+  background: #f5f3ea;
+  color: var(--ink);
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);

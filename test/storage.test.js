@@ -206,10 +206,10 @@ test('serializeHeaders stringifies circular values', () => {
 });
 
 test('allowlist normalizers support full address and domain keys', () => {
-  assert.equal(normalizeAllowlistEntry(' @Berich.XYZ '), 'berich.xyz');
-  assert.deepEqual(recipientAllowlistKeys('Jasper@Mail.Berich.XYZ'), [
-    'jasper@mail.berich.xyz',
-    'mail.berich.xyz'
+  assert.equal(normalizeAllowlistEntry(' @Example.Com '), 'example.com');
+  assert.deepEqual(recipientAllowlistKeys('User@Mail.Example.Com'), [
+    'user@mail.example.com',
+    'mail.example.com'
   ]);
   assert.deepEqual(recipientAllowlistKeys('invalid'), ['invalid']);
 });
@@ -219,17 +219,17 @@ test('recipient allowlist supports seed, list, add, remove, and matching', async
   const storage = createStorage('postgres://example', { pool });
   await storage.init();
 
-  await storage.seedRecipientAllowlist(['@berich.xyz', 'Jasper@Mail.Berich.XYZ']);
+  await storage.seedRecipientAllowlist(['@example.com', 'User@Mail.Example.Com']);
 
   assert.deepEqual(
     (await storage.listRecipientAllowlist()).map((item) => item.entry),
-    ['berich.xyz', 'jasper@mail.berich.xyz']
+    ['example.com', 'user@mail.example.com']
   );
-  assert.equal(await storage.isRecipientAllowed('someone@berich.xyz'), true);
-  assert.equal(await storage.isRecipientAllowed('jasper@mail.berich.xyz'), true);
+  assert.equal(await storage.isRecipientAllowed('someone@example.com'), true);
+  assert.equal(await storage.isRecipientAllowed('user@mail.example.com'), true);
   assert.equal(await storage.isRecipientAllowed('spameri@tiscali.it'), false);
-  assert.equal(await storage.removeRecipientAllowlistEntry('berich.xyz'), true);
-  assert.equal(await storage.isRecipientAllowed('someone@berich.xyz'), false);
+  assert.equal(await storage.removeRecipientAllowlistEntry('example.com'), true);
+  assert.equal(await storage.isRecipientAllowed('someone@example.com'), false);
 });
 
 test('storage stores, lists, and fetches messages in postgres', async () => {

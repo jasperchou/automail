@@ -46,7 +46,7 @@ SMTP_PORT=25 HTTP_PORT=3000 API_KEY=your-secret-key DATABASE_URL=postgres://post
 HTTP_PORT=3000
 SMTP_PORT=2525
 API_KEY=your-secret-key
-ALLOWED_RECIPIENTS=berich.xyz,mail.berich.xyz
+ALLOWED_RECIPIENTS=example.com,mail.example.com
 DATA_DIR=./data
 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/mail_service
 ```
@@ -95,7 +95,7 @@ docker compose restart app
 如果服务器上已经有可复用的 Postgres，直接执行：
 
 ```bash
-git clone git@github.com:jasperchou/automail.git
+git clone git@github.com:your-org/automail.git
 cd automail
 cp .env.example .env
 vi .env
@@ -110,7 +110,7 @@ SMTP_PORT=2525
 HTTP_BIND_PORT=3000
 SMTP_BIND_PORT=25
 API_KEY=replace-with-a-long-random-string
-ALLOWED_RECIPIENTS=berich.xyz,mail.berich.xyz
+ALLOWED_RECIPIENTS=example.com,mail.example.com
 DATA_DIR=./data
 DATABASE_URL=postgres://postgres:strong-password@your-postgres-host:5432/mail_service
 ```
@@ -118,7 +118,7 @@ DATABASE_URL=postgres://postgres:strong-password@your-postgres-host:5432/mail_se
 如果服务器上没有可复用的 Postgres，直接执行：
 
 ```bash
-git clone git@github.com:jasperchou/automail.git
+git clone git@github.com:your-org/automail.git
 cd automail
 cp .env.example .env
 vi .env
@@ -143,7 +143,7 @@ curl http://127.0.0.1:3000/health
 
 ```env
 DATABASE_URL=postgres://user:password@postgres:5432/automail
-EXTERNAL_DOCKER_NETWORK=sub2api-deploy_sub2api-network
+EXTERNAL_DOCKER_NETWORK=existing-postgres-network
 ```
 
 启动时带上外部网络覆盖文件：
@@ -162,7 +162,7 @@ docker compose -f compose.yml -f compose.external-network.yml up -d --build app
 示例：
 
 ```bash
-git clone git@github.com:jasperchou/automail.git
+git clone git@github.com:your-org/automail.git
 cd automail
 cp .env.example .env
 ./scripts/deploy.sh
@@ -182,7 +182,7 @@ SMTP_PORT=2525
 HTTP_BIND_PORT=3000
 SMTP_BIND_PORT=25
 API_KEY=replace-with-a-long-random-string
-ALLOWED_RECIPIENTS=berich.xyz,mail.berich.xyz
+ALLOWED_RECIPIENTS=example.com,mail.example.com
 DATA_DIR=./data
 DATABASE_URL=postgres://postgres:strong-password@your-postgres-host:5432/mail_service
 ```
@@ -223,7 +223,7 @@ curl -H "x-api-key: your-secret-key" http://127.0.0.1:3000/allowlist
 curl -X POST \
   -H "x-api-key: your-secret-key" \
   -H "content-type: application/json" \
-  -d '{"entry":"berich.xyz"}' \
+  -d '{"entry":"example.com"}' \
   http://127.0.0.1:3000/allowlist
 ```
 
@@ -232,13 +232,13 @@ curl -X POST \
 ```bash
 curl -X DELETE \
   -H "x-api-key: your-secret-key" \
-  "http://127.0.0.1:3000/allowlist?entry=berich.xyz"
+  "http://127.0.0.1:3000/allowlist?entry=example.com"
 ```
 
 白名单说明：
 
-- 条目可以是完整邮箱，例如 `jasper@mail.berich.xyz`
-- 条目也可以是域名，例如 `mail.berich.xyz` 或 `berich.xyz`
+- 条目可以是完整邮箱，例如 `user@mail.example.com`
+- 条目也可以是域名，例如 `mail.example.com` 或 `example.com`
 - SMTP 在 `RCPT TO` 阶段拒绝非白名单收件人，拒收邮件不会入库
 
 按邮箱查看邮件列表：
@@ -310,6 +310,17 @@ curl --url smtp://127.0.0.1:2525 \
 
 ```bash
 curl "http://127.0.0.1:3000/messages?mailbox=test@example.com"
+```
+
+## 本地查看器配置
+
+仓库内的 `viewer/config.js` 只保留本地示例值，避免提交真实域名或 API key。
+
+如果你需要让本地 viewer 直接连自己的服务，可以创建一个不会被 git 跟踪的 `viewer/config.local.js`：
+
+```js
+export const DEFAULT_API_BASE = 'https://mail.example.com';
+export const DEFAULT_API_KEY = 'replace-with-your-api-key';
 ```
 
 ## 域名配置

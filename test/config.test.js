@@ -37,7 +37,7 @@ test('createConfig prefers process env over local env', () => {
       API_KEY: 'from-file',
       DATABASE_URL: 'postgres://file-user:file-pass@db:5432/file_db',
       DATA_DIR: './mail-data',
-      ALLOWED_RECIPIENTS: 'berich.xyz, jasper@mail.berich.xyz'
+      ALLOWED_RECIPIENTS: 'example.com, user@mail.example.com'
     },
     processEnv: {
       HTTP_PORT: '3999',
@@ -50,7 +50,7 @@ test('createConfig prefers process env over local env', () => {
   assert.equal(config.smtpPort, 2525);
   assert.equal(config.databaseUrl, 'postgres://file-user:file-pass@db:5432/file_db');
   assert.equal(config.dataDir, path.resolve('/tmp/mail-root', 'mail-data'));
-  assert.deepEqual(config.allowedRecipients, ['berich.xyz', 'jasper@mail.berich.xyz']);
+  assert.deepEqual(config.allowedRecipients, ['example.com', 'user@mail.example.com']);
 });
 
 test('createConfig preserves absolute data directory', () => {

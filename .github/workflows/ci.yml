@@ -40,4 +40,4 @@ jobs:
           node --check src/index.js
           node --check src/storage.js
           node --check src/structured.js
-          node --check viewer/app.js
+          node --check viewer/*.js

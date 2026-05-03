@@ -1,5 +1,5 @@
 import { createApiClient } from './api.js';
-import { DEFAULT_API_BASE, DEFAULT_API_KEY } from './config.js';
+import { DEFAULT_API_BASE as FALLBACK_API_BASE, DEFAULT_API_KEY as FALLBACK_API_KEY } from './config.js';
 import {
   escapeAttribute,
   escapeHtml,
@@ -17,6 +17,9 @@ import {
 } from './mail-content.js';
 
 const DEFAULT_BODY_MODE_KEY = 'automail.viewer.defaultBodyMode';
+const localConfig = await import('./config.local.js').catch(() => ({}));
+const DEFAULT_API_BASE = localConfig.DEFAULT_API_BASE || FALLBACK_API_BASE;
+const DEFAULT_API_KEY = localConfig.DEFAULT_API_KEY || FALLBACK_API_KEY;
 
 function readDefaultBodyMode() {
   const value = localStorage.getItem(DEFAULT_BODY_MODE_KEY);

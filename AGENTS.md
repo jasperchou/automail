@@ -14,7 +14,7 @@
 - SMTP receives mail directly on port `25` on the server; do not route SMTP through Caddy.
 - SMTP must reject recipients outside the recipient allowlist at `RCPT TO` time.
 - Recipient allowlist entries can be full email addresses or domains; manage them through `/allowlist`.
-- HTTP API is served behind Caddy at `https://mail.berich.xyz`.
+- HTTP API may be served behind Caddy; keep concrete private domains out of public docs.
 - Caddy must require an API key to be present for mail API requests, and the backend must still validate the actual key.
 - CORS for the mail API should remain open enough for the local viewer: allow `GET`, `POST`, `DELETE`, `OPTIONS`, and `x-api-key`.
 
@@ -22,7 +22,7 @@
 
 - Use Postgres for mail data.
 - Prefer reusing an existing Postgres container/network instead of starting a duplicate database.
-- On the Japan server, automail reuses the `sub2api` Postgres setup with a separate `automail` database.
+- Prefer reusing an existing Postgres setup with a separate application database.
 - Keep data paths explicit and stable. Project runtime data should use `./data` locally unless a server `.env` overrides it.
 - Do not expose or print server `.env` values unnecessarily.
 
@@ -45,7 +45,7 @@
 
 ```bash
 npm run backfill:structured
-npm run backfill:structured -- --mailbox=jasper@mail.berich.xyz
+npm run backfill:structured -- --mailbox=user@mail.example.com
 ```
 
 - Extract these built-in item types:
@@ -77,11 +77,8 @@ npm run backfill:structured -- --mailbox=jasper@mail.berich.xyz
 
 ## Deployment Notes
 
-- Server host alias used so far: `tengxun-tokyo-01`.
-- Server deployment directory used so far: `/home/ubuntu/automail-deploy`.
-- App container name used so far: `simple-mail-service`.
-- Server API binding used so far: app HTTP on `127.0.0.1:3001`, Caddy public HTTPS on `mail.berich.xyz`.
-- When deploying code, sync without `.git/`, `node_modules/`, `data/`, or `.env`, then rebuild only the app service unless database changes require otherwise.
+- Keep private server aliases, deployment paths, domains, and API keys out of committed docs.
+- When deploying code, sync without `.git/`, `node_modules/`, `data/`, `.env`, or local viewer config, then rebuild only the app service unless database changes require otherwise.
 
 ## Testing
 

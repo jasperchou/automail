@@ -162,7 +162,7 @@ test('allowlist endpoint requires api key and supports list add delete', async (
     method: 'POST',
     url: '/allowlist',
     headers: { 'x-api-key': 'secret' },
-    body: JSON.stringify({ entry: '@berich.xyz' })
+    body: JSON.stringify({ entry: '@example.com' })
   });
   const listed = await callRoute(route, {
     url: '/allowlist',
@@ -170,14 +170,14 @@ test('allowlist endpoint requires api key and supports list add delete', async (
   });
   const removed = await callRoute(route, {
     method: 'DELETE',
-    url: '/allowlist?entry=berich.xyz',
+    url: '/allowlist?entry=example.com',
     headers: { 'x-api-key': 'secret' }
   });
 
   assert.equal(unauthorized.statusCode, 401);
   assert.equal(added.statusCode, 201);
-  assert.equal(added.body.entry.entry, 'berich.xyz');
-  assert.deepEqual(listed.body.entries.map((item) => item.entry), ['berich.xyz']);
+  assert.equal(added.body.entry.entry, 'example.com');
+  assert.deepEqual(listed.body.entries.map((item) => item.entry), ['example.com']);
   assert.equal(removed.statusCode, 200);
   assert.equal(removed.body.removed, true);
 });

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  createApiKeyHash,
   createStorage,
   normalizeAllowlistEntry,
+  normalizeApiKey,
   pickText,
   recipientAllowlistKeys,
   serializeHeaders
@@ -10,6 +12,8 @@ import {
 
 function createPoolMock() {
   const state = {
+    apiKeys: new Map(),
+    nextApiKeyId: 1,
     allowlist: new Map(),
     mailboxes: new Map(),
     messages: []
@@ -20,6 +24,57 @@ function createPoolMock() {
     async query(text, params = []) {
       if (text.includes('CREATE TABLE') || text.includes('CREATE INDEX') || text.includes('ALTER TABLE')) {
         return { rows: [], rowCount: 0 };
+      }
+
+      if (text.includes('INSERT INTO api_keys')) {
+        const existing = state.apiKeys.get(params[0]);
+        const row = existing || {
+          id: state.nextApiKeyId,
+          key_hash: params[0],
+          created_at: '2026-05-03T00:00:00.000Z',
+          last_used_at: null
+        };
+        if (!existing) {
+          state.nextApiKeyId += 1;
+        }
+        row.label = params[1];
+        row.active = true;
+        state.apiKeys.set(params[0], row);
+        return { rows: [row], rowCount: 1 };
+      }
+
+      if (text.includes('SELECT id, label, active, created_at, last_used_at') && text.includes('FROM api_keys')) {
+        const rows = [...state.apiKeys.values()].sort((a, b) => {
+          if (a.active !== b.active) {
+            return a.active ? -1 : 1;
+          }
+
+          return b.id - a.id;
+        });
+        return { rows, rowCount: rows.length };
+      }
+
+      if (text.includes('FROM api_keys') && text.includes('WHERE active = TRUE') && text.includes('LIMIT 1')) {
+        const active = [...state.apiKeys.values()].some((row) => row.active);
+        return { rows: active ? [{ '?column?': 1 }] : [], rowCount: active ? 1 : 0 };
+      }
+
+      if (text.includes('UPDATE api_keys') && text.includes('SET last_used_at')) {
+        const row = state.apiKeys.get(params[0]);
+        if (!row || !row.active) {
+          return { rows: [], rowCount: 0 };
+        }
+        row.last_used_at = '2026-05-03T01:00:00.000Z';
+        return { rows: [{ id: row.id }], rowCount: 1 };
+      }
+
+      if (text.includes('UPDATE api_keys') && text.includes('SET active = FALSE')) {
+        const row = [...state.apiKeys.values()].find((item) => item.id === params[0] && item.active);
+        if (!row) {
+          return { rows: [], rowCount: 0 };
+        }
+        row.active = false;
+        return { rows: [{ id: row.id }], rowCount: 1 };
       }
 
       if (text.includes('INSERT INTO mailboxes')) {
@@ -212,6 +267,38 @@ test('allowlist normalizers support full address and domain keys', () => {
     'mail.example.com'
   ]);
   assert.deepEqual(recipientAllowlistKeys('invalid'), ['invalid']);
+});
+
+test('api key helpers normalize and hash keys without storing plaintext', () => {
+  assert.equal(normalizeApiKey('  secret  '), 'secret');
+  assert.equal(createApiKeyHash(''), '');
+  assert.match(createApiKeyHash('secret'), /^[a-f0-9]{64}$/);
+  assert.notEqual(createApiKeyHash('secret'), 'secret');
+});
+
+test('api keys support multiple active keys and selective deactivation', async () => {
+  const pool = createPoolMock();
+  const storage = createStorage('postgres://example', { pool });
+  await storage.init();
+
+  const first = await storage.addApiKey('first-secret', { label: 'first' });
+  const second = await storage.addApiKey('second-secret', { label: 'second' });
+
+  assert.equal(await storage.hasActiveApiKeys(), true);
+  assert.equal(await storage.isApiKeyAllowed('first-secret'), true);
+  assert.equal(await storage.isApiKeyAllowed('second-secret'), true);
+  assert.equal(await storage.isApiKeyAllowed('missing-secret'), false);
+
+  const keys = await storage.listApiKeys();
+  assert.deepEqual(keys.map((item) => item.label), ['second', 'first']);
+  assert.equal(Object.hasOwn(keys[0], 'keyHash'), false);
+  assert.equal(Object.hasOwn(keys[0], 'key'), false);
+
+  assert.equal(await storage.deactivateApiKey(first.id), true);
+  assert.equal(await storage.isApiKeyAllowed('first-secret'), false);
+  assert.equal(await storage.isApiKeyAllowed('second-secret'), true);
+  assert.equal(await storage.deactivateApiKey(second.id), true);
+  assert.equal(await storage.hasActiveApiKeys(), false);
 });
 
 test('recipient allowlist supports seed, list, add, remove, and matching', async () => {

@@ -112,6 +112,143 @@ test('mailboxes endpoint accepts api key query parameter and handles storage err
   assert.equal(response.body.error, 'Failed to list mailboxes');
 });
 
+test('protected endpoints prefer database api keys and keep multiple keys active', async () => {
+  const activeKeys = new Set(['first-secret', 'second-secret']);
+  const route = createRoute({
+    config: {
+      apiKey: 'env-secret',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      hasActiveApiKeys: async () => activeKeys.size > 0,
+      isApiKeyAllowed: async (key) => activeKeys.has(key),
+      listMailboxes: async () => ['a@example.com']
+    }
+  });
+
+  const first = await callRoute(route, {
+    url: '/mailboxes',
+    headers: { 'x-api-key': 'first-secret' }
+  });
+  const second = await callRoute(route, {
+    url: '/mailboxes?api_key=second-secret'
+  });
+  const envFallbackDisabled = await callRoute(route, {
+    url: '/mailboxes',
+    headers: { 'x-api-key': 'env-secret' }
+  });
+
+  assert.equal(first.statusCode, 200);
+  assert.equal(second.statusCode, 200);
+  assert.equal(envFallbackDisabled.statusCode, 401);
+});
+
+test('protected endpoints fall back to env api key when database has no active keys', async () => {
+  const route = createRoute({
+    config: {
+      apiKey: 'env-secret',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      hasActiveApiKeys: async () => false,
+      isApiKeyAllowed: async () => false,
+      listMailboxes: async () => ['a@example.com']
+    }
+  });
+
+  const response = await callRoute(route, {
+    url: '/mailboxes',
+    headers: { 'x-api-key': 'env-secret' }
+  });
+
+  assert.equal(response.statusCode, 200);
+});
+
+test('api keys endpoint lists metadata, adds keys, and deactivates one key', async () => {
+  const keys = new Map([
+    ['1', {
+      id: 1,
+      label: 'existing',
+      active: true,
+      createdAt: '2026-05-03T00:00:00.000Z',
+      lastUsedAt: null
+    }]
+  ]);
+  const activeSecrets = new Set(['admin-secret', 'new-secret']);
+  const route = createRoute({
+    config: {
+      apiKey: 'admin-secret',
+      smtpHost: '0.0.0.0',
+      smtpPort: 2525,
+      httpHost: '0.0.0.0',
+      httpPort: 3000
+    },
+    storage: {
+      hasActiveApiKeys: async () => activeSecrets.size > 0,
+      isApiKeyAllowed: async (key) => activeSecrets.has(key),
+      listApiKeys: async () => [...keys.values()],
+      addApiKey: async (key, options) => {
+        activeSecrets.add(key);
+        const record = {
+          id: 2,
+          label: options.label,
+          active: true,
+          createdAt: '2026-05-03T01:00:00.000Z',
+          lastUsedAt: null
+        };
+        keys.set(String(record.id), record);
+        return record;
+      },
+      deactivateApiKey: async (id) => {
+        const record = keys.get(id);
+        if (!record || !record.active) {
+          return false;
+        }
+        record.active = false;
+        return true;
+      }
+    }
+  });
+
+  const listed = await callRoute(route, {
+    url: '/api-keys',
+    headers: { 'x-api-key': 'admin-secret' }
+  });
+  const added = await callRoute(route, {
+    method: 'POST',
+    url: '/api-keys',
+    headers: { 'x-api-key': 'admin-secret' },
+    body: JSON.stringify({ key: 'new-secret', label: 'new key' })
+  });
+  const removed = await callRoute(route, {
+    method: 'DELETE',
+    url: '/api-keys/1',
+    headers: { 'x-api-key': 'new-secret' }
+  });
+  const missingPostKey = await callRoute(route, {
+    method: 'POST',
+    url: '/api-keys',
+    headers: { 'x-api-key': 'new-secret' },
+    body: '{}'
+  });
+
+  assert.equal(listed.statusCode, 200);
+  assert.equal(listed.body.keys[0].label, 'existing');
+  assert.equal(Object.hasOwn(listed.body.keys[0], 'key'), false);
+  assert.equal(Object.hasOwn(listed.body.keys[0], 'keyHash'), false);
+  assert.equal(added.statusCode, 201);
+  assert.equal(added.body.key.label, 'new key');
+  assert.equal(removed.statusCode, 200);
+  assert.equal(removed.body.removed, true);
+  assert.equal(missingPostKey.statusCode, 400);
+});
+
 test('options request returns cors preflight response', async () => {
   const route = createRoute({
     config: {

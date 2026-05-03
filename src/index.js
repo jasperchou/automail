@@ -11,6 +11,7 @@ const storage = createStorage(config.databaseUrl);
 async function main() {
   await fs.mkdir(config.dataDir, { recursive: true });
   await storage.init();
+  await storage.seedApiKey(config.apiKey, 'bootstrap');
   await storage.seedRecipientAllowlist(config.allowedRecipients);
 
   const smtpServer = new SMTPServer({

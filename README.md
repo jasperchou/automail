@@ -108,7 +108,7 @@ curl -H "x-api-key: replace-with-a-long-random-api-key" \
 | `SMTP_BIND_PORT` | 宿主机 SMTP 暴露端口 | `25` |
 | `HTTP_HOST` | HTTP 监听地址 | `0.0.0.0` |
 | `SMTP_HOST` | SMTP 监听地址 | `0.0.0.0` |
-| `API_KEY` | HTTP API 鉴权 key，生产环境必须设置 | `replace-with-your-api-key` |
+| `API_KEY` | HTTP API bootstrap key，启动时会写入数据库 key 表 | `replace-with-your-api-key` |
 | `ALLOWED_RECIPIENTS` | 允许收信的邮箱或域名，逗号分隔 | `example.com,mail.example.com` |
 | `DATABASE_URL` | Postgres 连接串 | `postgres://...` |
 | `DATA_DIR` | 应用挂载的数据目录 | `./data` |
@@ -176,6 +176,35 @@ curl -H "x-api-key: replace-with-a-long-random-api-key" http://127.0.0.1:3000/ma
 
 ```bash
 curl "http://127.0.0.1:3000/mailboxes?api_key=replace-with-a-long-random-api-key"
+```
+
+### API Key 管理
+
+Automail 启动时会把 `.env` 中的 `API_KEY` 写入 Postgres 的 `api_keys` 表。运行时鉴权优先检查数据库里的 active keys；数据库没有 active key 时才回退到 `.env API_KEY`。数据库只保存 key 的 SHA-256 hash，不保存明文。
+
+不要通过覆盖 `.env API_KEY` 来做常规轮换，因为其他服务可能仍在使用旧 key。推荐流程是先新增 key，迁移调用方，再禁用旧 key：
+
+```bash
+curl -X POST \
+  -H "x-api-key: current-api-key" \
+  -H "content-type: application/json" \
+  -d '{"key":"new-long-random-api-key","label":"automation worker"}' \
+  http://127.0.0.1:3000/api-keys
+```
+
+查看 key 元信息。响应只包含 `id`、`label`、`active`、`createdAt`、`lastUsedAt`，不会返回明文 key 或 hash：
+
+```bash
+curl -H "x-api-key: current-api-key" \
+  http://127.0.0.1:3000/api-keys
+```
+
+确认调用方都迁移后，再禁用旧 key：
+
+```bash
+curl -X DELETE \
+  -H "x-api-key: current-api-key" \
+  http://127.0.0.1:3000/api-keys/1
 ```
 
 ### 健康检查
@@ -358,6 +387,7 @@ SMTP 不建议也不需要走 Caddy/Nginx。公网邮件投递只依赖 `MX` 和
 - `mailboxes`：自动创建的邮箱地址。
 - `messages`：邮件正文、HTML、headers、附件元数据、结构化数据和原始内容。
 - `recipient_allowlist`：允许收件的邮箱或域名。
+- `api_keys`：API key 的 hash、label、active 状态和最近使用时间。
 
 项目内 `./data` 只作为稳定运行时目录：
 
@@ -368,6 +398,8 @@ SMTP 不建议也不需要走 Caddy/Nginx。公网邮件投递只依赖 `MX` 和
 ## 安全和隐私
 
 - 生产环境必须设置足够长的 `API_KEY`。
+- API key 支持多把 active key 并存；新增 key 不会自动禁用旧 key。
+- 常规轮换应通过 `/api-keys` 新增，再逐步迁移调用方，最后禁用旧 key。
 - 不要提交 `.env`、`data/`、`node_modules/`、`viewer/config.local.js`。
 - 文档、示例、测试和 viewer 默认配置不要写入真实域名、API key、服务器地址、部署路径或个人账号信息。
 - SMTP 收件白名单必须保持开启，避免服务变成开放收信入口。

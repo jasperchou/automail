@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { simpleParser } from 'mailparser';
 import { Pool } from 'pg';
 import { extractStructuredData, normalizeStructuredData } from './structured.js';
@@ -66,6 +66,35 @@ export function recipientAllowlistKeys(address = '') {
   ];
 }
 
+export function normalizeApiKey(value = '') {
+  return String(value).trim();
+}
+
+export function createApiKeyHash(value = '') {
+  const apiKey = normalizeApiKey(value);
+
+  if (!apiKey) {
+    return '';
+  }
+
+  return createHash('sha256').update(apiKey).digest('hex');
+}
+
+function normalizeApiKeyLabel(value = '') {
+  const label = String(value || '').trim();
+  return label || 'api key';
+}
+
+function formatApiKeyRow(row) {
+  return {
+    id: Number(row.id),
+    label: row.label,
+    active: Boolean(row.active),
+    createdAt: new Date(row.created_at).toISOString(),
+    lastUsedAt: row.last_used_at ? new Date(row.last_used_at).toISOString() : null
+  };
+}
+
 export function createStorage(databaseUrl, options = {}) {
   const pool = options.pool || new Pool({
     connectionString: databaseUrl
@@ -127,6 +156,114 @@ export function createStorage(databaseUrl, options = {}) {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `);
+
+    await query(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id BIGSERIAL PRIMARY KEY,
+        key_hash TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL DEFAULT 'api key',
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_used_at TIMESTAMPTZ
+      )
+    `);
+
+    await query(`
+      CREATE INDEX IF NOT EXISTS idx_api_keys_active
+      ON api_keys (active)
+    `);
+  }
+
+  async function addApiKey(apiKey, options = {}) {
+    const keyHash = createApiKeyHash(apiKey);
+
+    if (!keyHash) {
+      return null;
+    }
+
+    const label = normalizeApiKeyLabel(options.label);
+    const result = await query(
+      `
+        INSERT INTO api_keys (key_hash, label, active)
+        VALUES ($1, $2, TRUE)
+        ON CONFLICT (key_hash) DO UPDATE
+        SET label = EXCLUDED.label,
+            active = TRUE
+        RETURNING id, label, active, created_at, last_used_at
+      `,
+      [keyHash, label]
+    );
+
+    return formatApiKeyRow(result.rows[0]);
+  }
+
+  async function seedApiKey(apiKey, label = 'bootstrap') {
+    return addApiKey(apiKey, { label });
+  }
+
+  async function listApiKeys() {
+    const result = await query(
+      `
+        SELECT id, label, active, created_at, last_used_at
+        FROM api_keys
+        ORDER BY active DESC, created_at DESC, id DESC
+      `
+    );
+
+    return result.rows.map(formatApiKeyRow);
+  }
+
+  async function hasActiveApiKeys() {
+    const result = await query(
+      `
+        SELECT 1
+        FROM api_keys
+        WHERE active = TRUE
+        LIMIT 1
+      `
+    );
+
+    return result.rowCount > 0;
+  }
+
+  async function isApiKeyAllowed(apiKey) {
+    const keyHash = createApiKeyHash(apiKey);
+
+    if (!keyHash) {
+      return false;
+    }
+
+    const result = await query(
+      `
+        UPDATE api_keys
+        SET last_used_at = NOW()
+        WHERE key_hash = $1 AND active = TRUE
+        RETURNING id
+      `,
+      [keyHash]
+    );
+
+    return result.rowCount > 0;
+  }
+
+  async function deactivateApiKey(id) {
+    const numericId = Number(id);
+
+    if (!Number.isInteger(numericId) || numericId <= 0) {
+      return false;
+    }
+
+    const result = await query(
+      `
+        UPDATE api_keys
+        SET active = FALSE
+        WHERE id = $1 AND active = TRUE
+        RETURNING id
+      `,
+      [numericId]
+    );
+
+    return result.rowCount > 0;
   }
 
   async function ensureMailbox(mailbox) {
@@ -525,6 +662,12 @@ export function createStorage(databaseUrl, options = {}) {
   return {
     query,
     init,
+    addApiKey,
+    seedApiKey,
+    listApiKeys,
+    hasActiveApiKeys,
+    isApiKeyAllowed,
+    deactivateApiKey,
     storeMessage,
     listMailboxes,
     seedRecipientAllowlist,

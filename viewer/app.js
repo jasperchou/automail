@@ -139,6 +139,16 @@ function stripHtml(value) {
   return template.content.textContent || '';
 }
 
+function messageBodyText(message) {
+  const text = String(message.text || '').trim();
+
+  if (text) {
+    return text;
+  }
+
+  return stripHtml(message.html).trim();
+}
+
 function extractHtmlLinks(value) {
   const template = document.createElement('template');
   template.innerHTML = value || '';
@@ -326,6 +336,7 @@ function renderEmptyDetail() {
 
 function renderMessageDetail(message) {
   const structuredItems = extractStructuredItems(message);
+  const bodyText = messageBodyText(message);
   const structuredHtml = structuredItems.length > 0
     ? `
       <section class="extracted">
@@ -353,7 +364,7 @@ function renderMessageDetail(message) {
       <strong>Stored</strong><span>${fullTime(message.storedAt)}</span>
       <strong>Date</strong><span>${fullTime(message.date)}</span>
     </div>
-    ${message.html ? `<iframe class="html-frame" sandbox srcdoc="${escapeAttribute(message.html)}"></iframe>` : `<div class="mail-body">${escapeHtml(message.text || '')}</div>`}
+    <div class="mail-body">${escapeHtml(bodyText || '(empty body)')}</div>
   `;
   nodes.messageDetail.querySelectorAll('[data-copy]').forEach((item) => {
     item.addEventListener('click', (event) => {

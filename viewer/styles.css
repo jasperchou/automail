@@ -174,7 +174,7 @@ button:hover {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(320px, 400px) minmax(310px, 430px) minmax(420px, 1fr);
+  grid-template-columns: fit-content(400px) minmax(310px, 430px) minmax(420px, 1fr);
   min-height: 0;
   border: 1px solid var(--line);
   background: rgba(251, 250, 245, 0.82);

@@ -5,6 +5,7 @@
 - Reply in Chinese by default for this repository.
 - Keep changes pragmatic and simple; prefer small, verifiable patches.
 - When code changes are made, run relevant tests and create a commit unless explicitly told not to.
+- If currently on the `main` branch and code or project files need to change, create/switch to a task branch before editing.
 - Do not commit local secrets or runtime data. `.env`, `data/`, and `node_modules/` must stay ignored.
 
 ## Service Shape

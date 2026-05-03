@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Automail Viewer</title>
     <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./styles.css?v=20260503-3">
+    <link rel="stylesheet" href="./styles.css?v=20260503-4">
   </head>
   <body>
     <main class="shell">
@@ -34,9 +34,12 @@
             <span>Latest</span>
             <input id="limitInput" type="number" min="1" max="100" value="50">
           </label>
-          <label class="toggle">
-            <input id="autoRefreshInput" type="checkbox" checked>
-            <span>Auto refresh</span>
+          <label class="toggle-field">
+            <span>Refresh</span>
+            <span class="toggle">
+              <input id="autoRefreshInput" type="checkbox" checked>
+              <span>Auto</span>
+            </span>
           </label>
           <button type="submit">Search</button>
         </form>
@@ -96,6 +99,6 @@
     </aside>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script src="./app.js?v=20260503-3" type="module"></script>
+    <script src="./app.js?v=20260503-4" type="module"></script>
   </body>
 </html>

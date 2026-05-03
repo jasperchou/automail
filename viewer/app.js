@@ -17,8 +17,7 @@ const state = {
 
 const nodes = {
   statusText: document.querySelector('#statusText'),
-  apiBaseInput: document.querySelector('#apiBaseInput'),
-  apiKeyInput: document.querySelector('#apiKeyInput'),
+  apiBaseText: document.querySelector('#apiBaseText'),
   senderInput: document.querySelector('#senderInput'),
   keywordInput: document.querySelector('#keywordInput'),
   limitInput: document.querySelector('#limitInput'),
@@ -33,8 +32,7 @@ const nodes = {
   toast: document.querySelector('#toast')
 };
 
-nodes.apiBaseInput.value = localStorage.getItem('automail.apiBase') || DEFAULT_API_BASE;
-nodes.apiKeyInput.value = localStorage.getItem('automail.apiKey') || DEFAULT_API_KEY;
+nodes.apiBaseText.value = DEFAULT_API_BASE;
 
 function setStatus(message, isError = false) {
   nodes.statusText.textContent = message;
@@ -63,11 +61,11 @@ async function copyText(value) {
 }
 
 function apiBase() {
-  return nodes.apiBaseInput.value.replace(/\/+$/, '');
+  return DEFAULT_API_BASE.replace(/\/+$/, '');
 }
 
 function apiKey() {
-  return nodes.apiKeyInput.value.trim();
+  return DEFAULT_API_KEY;
 }
 
 async function request(path) {
@@ -417,8 +415,6 @@ async function refresh({ silent = false } = {}) {
 
   state.isRefreshing = true;
   try {
-    localStorage.setItem('automail.apiBase', apiBase());
-    localStorage.setItem('automail.apiKey', apiKey());
     localStorage.setItem('automail.autoRefresh', String(nodes.autoRefreshInput.checked));
     await loadMailboxes();
     await loadMessages();

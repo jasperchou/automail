@@ -6,7 +6,8 @@ const state = {
   selectedMailbox: 'all',
   messages: [],
   selectedMessageId: '',
-  bodyMode: localStorage.getItem('automail.bodyMode') === 'html' ? 'html' : 'text',
+  defaultBodyMode: localStorage.getItem('automail.defaultBodyMode') === 'html' ? 'html' : 'text',
+  bodyModeByMessageId: new Map(),
   refreshTimer: null,
   isRefreshing: false,
   filters: {
@@ -25,6 +26,11 @@ const nodes = {
   autoRefreshInput: document.querySelector('#autoRefreshInput'),
   searchForm: document.querySelector('#searchForm'),
   refreshButton: document.querySelector('#refreshButton'),
+  settingsButton: document.querySelector('#settingsButton'),
+  settingsCloseButton: document.querySelector('#settingsCloseButton'),
+  settingsBackdrop: document.querySelector('#settingsBackdrop'),
+  settingsPanel: document.querySelector('#settingsPanel'),
+  defaultBodyModeInputs: document.querySelectorAll('input[name="defaultBodyMode"]'),
   mailboxList: document.querySelector('#mailboxList'),
   messageTitle: document.querySelector('#messageTitle'),
   messageCount: document.querySelector('#messageCount'),
@@ -47,6 +53,26 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => {
     nodes.toast.classList.remove('show');
   }, 1500);
+}
+
+function setDefaultBodyMode(value) {
+  state.defaultBodyMode = value === 'html' ? 'html' : 'text';
+  localStorage.setItem('automail.defaultBodyMode', state.defaultBodyMode);
+  nodes.defaultBodyModeInputs.forEach((input) => {
+    input.checked = input.value === state.defaultBodyMode;
+  });
+}
+
+function setSettingsOpen(open) {
+  nodes.settingsPanel.hidden = !open;
+  nodes.settingsBackdrop.hidden = !open;
+  nodes.settingsButton.setAttribute('aria-expanded', String(open));
+
+  if (open) {
+    nodes.settingsPanel.querySelector('input:checked')?.focus();
+  } else {
+    nodes.settingsButton.focus();
+  }
 }
 
 async function copyText(value) {
@@ -358,7 +384,8 @@ function renderMessageDetail(message) {
   const structuredItems = extractStructuredItems(message);
   const bodyText = messageBodyText(message);
   const hasHtml = Boolean(String(message.html || '').trim());
-  const bodyMode = hasHtml ? state.bodyMode : 'text';
+  const selectedBodyMode = state.bodyModeByMessageId.get(message.id) || state.defaultBodyMode;
+  const bodyMode = hasHtml ? selectedBodyMode : 'text';
   const bodyToggleHtml = hasHtml
     ? `
       <div class="body-toolbar" role="group" aria-label="Message body view mode">
@@ -418,8 +445,7 @@ function renderMessageDetail(message) {
   });
   nodes.messageDetail.querySelectorAll('[data-body-mode]').forEach((item) => {
     item.addEventListener('click', () => {
-      state.bodyMode = item.dataset.bodyMode === 'html' ? 'html' : 'text';
-      localStorage.setItem('automail.bodyMode', state.bodyMode);
+      state.bodyModeByMessageId.set(message.id, item.dataset.bodyMode === 'html' ? 'html' : 'text');
       renderMessageDetail(message);
     });
   });
@@ -551,6 +577,28 @@ nodes.autoRefreshInput.addEventListener('change', () => {
 });
 
 nodes.refreshButton.addEventListener('click', () => refresh());
+nodes.settingsButton.addEventListener('click', () => setSettingsOpen(true));
+nodes.settingsCloseButton.addEventListener('click', () => setSettingsOpen(false));
+nodes.settingsBackdrop.addEventListener('click', () => setSettingsOpen(false));
+nodes.defaultBodyModeInputs.forEach((input) => {
+  input.addEventListener('change', () => {
+    setDefaultBodyMode(input.value);
+    state.bodyModeByMessageId.clear();
+    if (nodes.messageDetail.dataset.messageId) {
+      const selectedMessage = state.messages.find((message) => message.id === nodes.messageDetail.dataset.messageId);
+      if (selectedMessage) {
+        loadMessageDetail(selectedMessage);
+      }
+    }
+    showToast(`Default body mode: ${state.defaultBodyMode === 'html' ? 'Render HTML' : 'Text'}`);
+  });
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !nodes.settingsPanel.hidden) {
+    setSettingsOpen(false);
+  }
+});
 
+setDefaultBodyMode(state.defaultBodyMode);
 refresh();
 updateAutoRefresh();

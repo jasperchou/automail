@@ -14,7 +14,7 @@
 - 收件白名单
 - Postgres 存储
 - HTTP 查询接口
-- 本地查看器默认纯文本展示邮件正文，也可手动切换为禁用脚本的 HTML 渲染
+- 本地查看器默认纯文本展示邮件正文，也可在右上角设置默认 HTML/Text 渲染
 
 ## 启动
 
@@ -355,7 +355,7 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/mail_service
 - 服务端只用 `mailparser` 解析邮件并写入 Postgres，不会 `eval` 或执行邮件正文。
 - SMTP 在 `RCPT TO` 阶段执行收件白名单校验，非白名单收件人会被拒收，不会入库。
 - 结构化数据提取只做正则和字符串处理，内置提取六位验证码和用户可能需要点击的链接。
-- 本地查看器详情正文默认显示纯文本；如果手动切到 HTML 渲染，会放进 sandbox iframe，并禁止脚本执行。
+- 本地查看器详情正文默认显示纯文本；右上角 `Settings` 可以设置默认 Text/HTML 渲染。如果使用 HTML 渲染，会放进 sandbox iframe，并禁止脚本执行。
 
 如果你使用项目自带的 Postgres 容器，数据库文件会在：
 

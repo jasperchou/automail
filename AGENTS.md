@@ -73,6 +73,7 @@ npm run backfill:structured -- --mailbox=jasper@mail.berich.xyz
 - Toasts should be visible in the top-right.
 - API base can be displayed read-only; API key should not be shown in the UI.
 - Show a text-only body by default. Optional HTML rendering must stay inside a sandboxed iframe without script execution.
+- Put regular viewer preferences behind the top-right Settings entry, including the default text/html body rendering mode.
 
 ## Deployment Notes
 

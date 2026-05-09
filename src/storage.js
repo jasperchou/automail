@@ -353,9 +353,11 @@ export function createStorage(databaseUrl, options = {}) {
   async function listMailboxes() {
     const result = await query(
       `
-        SELECT email
+        SELECT mailboxes.email
         FROM mailboxes
-        ORDER BY email ASC
+        LEFT JOIN messages ON messages.mailbox = mailboxes.email
+        GROUP BY mailboxes.email
+        ORDER BY MAX(messages.stored_at) DESC NULLS LAST, mailboxes.email ASC
       `
     );
 

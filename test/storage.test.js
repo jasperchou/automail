@@ -133,9 +133,34 @@ function createPoolMock() {
         return { rows: exists ? [{ '?column?': 1 }] : [], rowCount: exists ? 1 : 0 };
       }
 
-      if (text.includes('SELECT email') && text.includes('FROM mailboxes')) {
+      if (text.includes('SELECT mailboxes.email') && text.includes('FROM mailboxes')) {
+        const latestStoredAtByMailbox = new Map();
+        for (const message of state.messages) {
+          const previous = latestStoredAtByMailbox.get(message.mailbox);
+          if (!previous || String(message.stored_at) > String(previous)) {
+            latestStoredAtByMailbox.set(message.mailbox, message.stored_at);
+          }
+        }
+
         return {
-          rows: [...state.mailboxes.values()].sort((a, b) => a.email.localeCompare(b.email)),
+          rows: [...state.mailboxes.values()].sort((a, b) => {
+            const latestA = latestStoredAtByMailbox.get(a.email);
+            const latestB = latestStoredAtByMailbox.get(b.email);
+
+            if (latestA && latestB && latestA !== latestB) {
+              return String(latestB).localeCompare(String(latestA));
+            }
+
+            if (latestA && !latestB) {
+              return -1;
+            }
+
+            if (!latestA && latestB) {
+              return 1;
+            }
+
+            return a.email.localeCompare(b.email);
+          }),
           rowCount: state.mailboxes.size
         };
       }
@@ -351,6 +376,34 @@ test('storage stores, lists, and fetches messages in postgres', async () => {
   assert.equal(message.envelope.mailFrom, 'sender@demo.com');
   assert.match(message.text, /hello test/);
   assert.deepEqual(message.envelope.rcptTo, ['user@example.com']);
+});
+
+test('listMailboxes orders mailboxes by latest message time', async () => {
+  const pool = createPoolMock();
+  const storage = createStorage('postgres://example', { pool });
+  await storage.init();
+
+  pool.state.mailboxes.set('z-empty@example.com', { email: 'z-empty@example.com' });
+  pool.state.mailboxes.set('a-old@example.com', { email: 'a-old@example.com' });
+  pool.state.mailboxes.set('b-new@example.com', { email: 'b-new@example.com' });
+  pool.state.messages.push(
+    {
+      id: 'old',
+      mailbox: 'a-old@example.com',
+      stored_at: '2024-05-01T00:00:00.000Z'
+    },
+    {
+      id: 'new',
+      mailbox: 'b-new@example.com',
+      stored_at: '2024-05-03T00:00:00.000Z'
+    }
+  );
+
+  assert.deepEqual(await storage.listMailboxes(), [
+    'b-new@example.com',
+    'a-old@example.com',
+    'z-empty@example.com'
+  ]);
 });
 
 test('listMessages returns null when mailbox does not exist', async () => {

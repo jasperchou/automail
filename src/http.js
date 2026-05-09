@@ -76,15 +76,42 @@ export function createRoute({ config, storage }) {
     sendJson(res, 401, { error: 'Unauthorized' });
   }
 
-  function isAuthorized(req, url) {
+  function getRequestApiKey(req, url) {
+    const headerKey = req.headers['x-api-key'];
+    const queryKey = url.searchParams.get('api_key');
+
+    return Array.isArray(headerKey) ? headerKey[0] : headerKey || queryKey || '';
+  }
+
+  async function isAuthorized(req, url) {
+    const requestKey = getRequestApiKey(req, url);
+
+    if (typeof storage.isApiKeyAllowed === 'function' && typeof storage.hasActiveApiKeys === 'function') {
+      if (await storage.hasActiveApiKeys()) {
+        return storage.isApiKeyAllowed(requestKey);
+      }
+    }
+
     if (!config.apiKey) {
       return true;
     }
 
-    const headerKey = req.headers['x-api-key'];
-    const queryKey = url.searchParams.get('api_key');
+    return requestKey === config.apiKey;
+  }
 
-    return headerKey === config.apiKey || queryKey === config.apiKey;
+  function requireAuth(req, res, url, handler) {
+    return isAuthorized(req, url)
+      .then((authorized) => {
+        if (!authorized) {
+          return unauthorized(res);
+        }
+
+        return handler();
+      })
+      .catch((error) => {
+        console.error(error);
+        sendJson(res, 500, { error: 'Failed to authorize request' });
+      });
   }
 
   return function route(req, res) {
@@ -105,143 +132,192 @@ export function createRoute({ config, storage }) {
     }
 
     if (req.method === 'GET' && pathname === '/mailboxes') {
-      if (!isAuthorized(req, url)) {
-        return unauthorized(res);
-      }
-
-      return storage.listMailboxes()
-        .then((mailboxes) => sendJson(res, 200, { mailboxes }))
-        .catch((error) => {
-          console.error(error);
-          sendJson(res, 500, { error: 'Failed to list mailboxes' });
-        });
+      return requireAuth(req, res, url, () => (
+        storage.listMailboxes()
+          .then((mailboxes) => sendJson(res, 200, { mailboxes }))
+          .catch((error) => {
+            console.error(error);
+            sendJson(res, 500, { error: 'Failed to list mailboxes' });
+          })
+      ));
     }
 
-    if (pathname === '/allowlist') {
-      if (!isAuthorized(req, url)) {
-        return unauthorized(res);
-      }
-
-      if (req.method === 'GET') {
-        return storage.listRecipientAllowlist()
-          .then((entries) => sendJson(res, 200, { entries }))
-          .catch((error) => {
-            console.error(error);
-            sendJson(res, 500, { error: 'Failed to list allowlist' });
-          });
-      }
-
-      if (req.method === 'POST') {
-        return readJsonBody(req)
-          .then((body) => {
-            if (!body.entry) {
-              sendJson(res, 400, { error: 'entry is required' });
-              return null;
-            }
-            return storage.addRecipientAllowlistEntry(body.entry);
-          })
-          .then((entry) => {
-            if (entry) {
-              sendJson(res, 201, { entry });
-            }
-          })
-          .catch((error) => {
-            console.error(error);
-            if (error instanceof SyntaxError) {
-              return sendJson(res, 400, { error: 'Invalid JSON body' });
-            }
-            sendJson(res, 500, { error: 'Failed to add allowlist entry' });
-          });
-      }
-
-      if (req.method === 'DELETE') {
-        const entry = url.searchParams.get('entry');
-
-        if (!entry) {
-          return sendJson(res, 400, { error: 'entry query param is required' });
+    if (pathname === '/api-keys') {
+      return requireAuth(req, res, url, () => {
+        if (req.method === 'GET') {
+          return storage.listApiKeys()
+            .then((keys) => sendJson(res, 200, { keys }))
+            .catch((error) => {
+              console.error(error);
+              sendJson(res, 500, { error: 'Failed to list api keys' });
+            });
         }
 
-        return storage.removeRecipientAllowlistEntry(entry)
+        if (req.method === 'POST') {
+          return readJsonBody(req)
+            .then((body) => {
+              if (!body.key) {
+                sendJson(res, 400, { error: 'key is required' });
+                return null;
+              }
+
+              return storage.addApiKey(body.key, { label: body.label });
+            })
+            .then((key) => {
+              if (key) {
+                sendJson(res, 201, { key });
+              }
+            })
+            .catch((error) => {
+              console.error(error);
+              if (error instanceof SyntaxError) {
+                return sendJson(res, 400, { error: 'Invalid JSON body' });
+              }
+              sendJson(res, 500, { error: 'Failed to add api key' });
+            });
+        }
+
+        return notFound(res);
+      });
+    }
+
+    if (req.method === 'DELETE' && parts[0] === 'api-keys' && parts[1]) {
+      return requireAuth(req, res, url, () => (
+        storage.deactivateApiKey(parts[1])
           .then((removed) => {
             if (!removed) {
-              return notFound(res, 'Allowlist entry not found');
+              return notFound(res, 'API key not found');
             }
             sendJson(res, 200, { removed: true });
           })
           .catch((error) => {
             console.error(error);
-            sendJson(res, 500, { error: 'Failed to remove allowlist entry' });
-          });
-      }
+            sendJson(res, 500, { error: 'Failed to delete api key' });
+          })
+      ));
+    }
+
+    if (pathname === '/allowlist') {
+      return requireAuth(req, res, url, () => {
+        if (req.method === 'GET') {
+          return storage.listRecipientAllowlist()
+            .then((entries) => sendJson(res, 200, { entries }))
+            .catch((error) => {
+              console.error(error);
+              sendJson(res, 500, { error: 'Failed to list allowlist' });
+            });
+        }
+
+        if (req.method === 'POST') {
+          return readJsonBody(req)
+            .then((body) => {
+              if (!body.entry) {
+                sendJson(res, 400, { error: 'entry is required' });
+                return null;
+              }
+              return storage.addRecipientAllowlistEntry(body.entry);
+            })
+            .then((entry) => {
+              if (entry) {
+                sendJson(res, 201, { entry });
+              }
+            })
+            .catch((error) => {
+              console.error(error);
+              if (error instanceof SyntaxError) {
+                return sendJson(res, 400, { error: 'Invalid JSON body' });
+              }
+              sendJson(res, 500, { error: 'Failed to add allowlist entry' });
+            });
+        }
+
+        if (req.method === 'DELETE') {
+          const entry = url.searchParams.get('entry');
+
+          if (!entry) {
+            return sendJson(res, 400, { error: 'entry query param is required' });
+          }
+
+          return storage.removeRecipientAllowlistEntry(entry)
+            .then((removed) => {
+              if (!removed) {
+                return notFound(res, 'Allowlist entry not found');
+              }
+              sendJson(res, 200, { removed: true });
+            })
+            .catch((error) => {
+              console.error(error);
+              sendJson(res, 500, { error: 'Failed to remove allowlist entry' });
+            });
+        }
+
+        return notFound(res);
+      });
     }
 
     if (req.method === 'GET' && pathname === '/messages') {
-      if (!isAuthorized(req, url)) {
-        return unauthorized(res);
-      }
+      return requireAuth(req, res, url, () => {
+        const mailbox = url.searchParams.get('mailbox');
+        const limit = parsePositiveInt(url.searchParams.get('limit'), 20);
+        const offset = parsePositiveInt(url.searchParams.get('offset'), 0);
+        const sender = url.searchParams.get('sender') || '';
+        const keyword = url.searchParams.get('keyword') || '';
+        const since = parseTimestamp(url.searchParams.get('since'));
+        const until = parseTimestamp(url.searchParams.get('until'));
 
-      const mailbox = url.searchParams.get('mailbox');
-      const limit = parsePositiveInt(url.searchParams.get('limit'), 20);
-      const offset = parsePositiveInt(url.searchParams.get('offset'), 0);
-      const sender = url.searchParams.get('sender') || '';
-      const keyword = url.searchParams.get('keyword') || '';
-      const since = parseTimestamp(url.searchParams.get('since'));
-      const until = parseTimestamp(url.searchParams.get('until'));
+        if (!mailbox) {
+          return sendJson(res, 400, { error: 'mailbox query param is required' });
+        }
 
-      if (!mailbox) {
-        return sendJson(res, 400, { error: 'mailbox query param is required' });
-      }
+        const listMessages = mailbox.toLowerCase() === 'all'
+          ? storage.listAllMessages({ limit, offset, sender, keyword, since, until })
+          : storage.listMessages(mailbox, { limit, offset, sender, keyword, since, until });
 
-      const listMessages = mailbox.toLowerCase() === 'all'
-        ? storage.listAllMessages({ limit, offset, sender, keyword, since, until })
-        : storage.listMessages(mailbox, { limit, offset, sender, keyword, since, until });
-
-      return listMessages
-        .then((result) => {
-          if (!result) {
-            return notFound(res, 'Mailbox not found');
-          }
-          sendJson(res, 200, {
-            mailbox,
-            total: result.total,
-            limit: result.limit,
-            offset: result.offset,
-            sender,
-            keyword,
-            since,
-            until,
-            messages: result.messages
+        return listMessages
+          .then((result) => {
+            if (!result) {
+              return notFound(res, 'Mailbox not found');
+            }
+            sendJson(res, 200, {
+              mailbox,
+              total: result.total,
+              limit: result.limit,
+              offset: result.offset,
+              sender,
+              keyword,
+              since,
+              until,
+              messages: result.messages
+            });
+          })
+          .catch((error) => {
+            console.error(error);
+            sendJson(res, 500, { error: 'Failed to list messages' });
           });
-        })
-        .catch((error) => {
-          console.error(error);
-          sendJson(res, 500, { error: 'Failed to list messages' });
-        });
+      });
     }
 
     if (req.method === 'GET' && parts[0] === 'messages' && parts[1]) {
-      if (!isAuthorized(req, url)) {
-        return unauthorized(res);
-      }
+      return requireAuth(req, res, url, () => {
+        const mailbox = url.searchParams.get('mailbox');
+        const id = parts[1];
 
-      const mailbox = url.searchParams.get('mailbox');
-      const id = parts[1];
+        if (!mailbox) {
+          return sendJson(res, 400, { error: 'mailbox query param is required' });
+        }
 
-      if (!mailbox) {
-        return sendJson(res, 400, { error: 'mailbox query param is required' });
-      }
-
-      return storage.getMessage(mailbox, id)
-        .then((message) => {
-          if (!message) {
-            return notFound(res, 'Message not found');
-          }
-          sendJson(res, 200, message);
-        })
-        .catch((error) => {
-          console.error(error);
-          sendJson(res, 500, { error: 'Failed to get message' });
-        });
+        return storage.getMessage(mailbox, id)
+          .then((message) => {
+            if (!message) {
+              return notFound(res, 'Message not found');
+            }
+            sendJson(res, 200, message);
+          })
+          .catch((error) => {
+            console.error(error);
+            sendJson(res, 500, { error: 'Failed to get message' });
+          });
+      });
     }
 
     notFound(res);
